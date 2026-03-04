@@ -39,7 +39,8 @@ _Bool CXiVerifyHuffmanTable_(void const *, u8);
 _Bool CXiLHVerifyTable(void const *, u8);
 
 static inline byte4_t CXiConvertEndian_(byte4_t x) {
-#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+#if (defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__) ||  \
+    defined(_MSC_VER)
   return x;
 #else
   return ((x & 0xff000000) >> 24) | ((x & 0x00ff0000) >> 8) |
@@ -48,7 +49,8 @@ static inline byte4_t CXiConvertEndian_(byte4_t x) {
 }
 
 static inline byte2_t CXiConvertEndian16_(byte2_t x) {
-#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+#if (defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__) ||  \
+    defined(_MSC_VER)
   return x;
 #else
   return ((x & 0xff00) >> 8) | ((x & 0x00ff) << 8);

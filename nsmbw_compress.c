@@ -1,4 +1,4 @@
-#include "CXSecureUncompression.h"
+#include "nsmbw_compress.h"
 #include "cx.h"
 #include "macros.h"
 #include "types.h"
@@ -20,6 +20,7 @@ enum nsmbw_compress_type {
   nsmbw_compress_type_lrc,
   nsmbw_compress_type_filter_diff,
   nsmbw_compress_type_szs,
+  nsmbw_compress_type_szp,
 };
 
 struct nsmbw_compress_argument {
@@ -142,6 +143,8 @@ static const char *str_compress_type(enum nsmbw_compress_type type) {
     return "filter-diff";
   case nsmbw_compress_type_szs:
     return "szs";
+  case nsmbw_compress_type_szp:
+    return "szp";
   default:
     return "unknown";
   }
@@ -163,6 +166,8 @@ static const char *str_default_extension(enum nsmbw_compress_type type) {
     return ".DIFF";
   case nsmbw_compress_type_szs:
     return ".szs";
+  case nsmbw_compress_type_szp:
+    return ".szp";
   default:
     return nullptr;
   }
@@ -339,18 +344,6 @@ static bool parse_arguments(int argc, const char *const *argv) {
   return true;
 }
 
-static uint32_t read_be_u32(const void *data, size_t offset) {
-  const uint8_t *bytes = (const uint8_t *)data + offset;
-  return ((uint32_t)bytes[0] << 24) | ((uint32_t)bytes[1] << 16) |
-         ((uint32_t)bytes[2] << 8) | (uint32_t)bytes[3];
-}
-
-static uint32_t read_le_u32(const void *data, size_t offset) {
-  const uint8_t *bytes = (const uint8_t *)data + offset;
-  return ((uint32_t)bytes[3] << 24) | ((uint32_t)bytes[2] << 16) |
-         ((uint32_t)bytes[1] << 8) | (uint32_t)bytes[0];
-}
-
 static bool get_uncompress_info(const void *input_data, size_t input_size,
                                 size_t *expanded_size,
                                 enum nsmbw_compress_type *compression_type) {
@@ -365,11 +358,20 @@ static bool get_uncompress_info(const void *input_data, size_t input_size,
       print_error("Input file is too small to be a valid SZS/Yaz0 file");
       return false;
     }
-    *expanded_size = read_be_u32(input_data, 4);
+    *expanded_size = nsmbw_compress_util_read_be_u32(input_data, 4);
+    return true;
+  }
+  if (memcmp(input_data, "Yay0", 4) == 0) {
+    *compression_type = nsmbw_compress_type_szp;
+    if (input_size < 8) {
+      print_error("Input file is too small to be a valid SZP/Yay0 file");
+      return false;
+    }
+    *expanded_size = nsmbw_compress_util_read_be_u32(input_data, 4);
     return true;
   }
 
-  uint32_t header = read_le_u32(input_data, 0);
+  uint32_t header = nsmbw_compress_util_read_le_u32(input_data, 0);
   CXCompressionType cx_type = header & CX_COMPRESSION_TYPE_MASK;
   switch (cx_type) {
   case CX_COMPRESSION_TYPE_LEMPEL_ZIV:
@@ -517,7 +519,16 @@ static int main_uncompress(const void *input_file, size_t input_file_size,
         CXSecureUnfilterDiff(input_file, input_file_size, uncompressed_data);
     break;
   case nsmbw_compress_type_szs:
-    assert(false && "SZS decompression not implemented");
+    result = nsmbw_compress_szs_decode(input_file, uncompressed_data,
+                                       input_file_size, expanded_size)
+                 ? CXSECURE_ESUCCESS
+                 : CXSECURE_EBADTYPE;
+    break;
+  case nsmbw_compress_type_szp:
+    (void)nsmbw_compress_szp_decode(input_file, uncompressed_data,
+                                    input_file_size, expanded_size);
+    result = CXSECURE_ESUCCESS; // nsmbw_compress_szp_decode doesn't have error
+                                // handling, assume success
     break;
   default:
     assert(false && "Unknown compressed format");
@@ -529,10 +540,10 @@ static int main_uncompress(const void *input_file, size_t input_file_size,
     free(work_buffer);
   }
 
-  //   if (result != CXSECURE_ESUCCESS) {
-  //     print_error("Decompression failed with error code: %d", result);
-  //     return EXIT_FAILURE;
-  //   }
+  if (result != CXSECURE_ESUCCESS) {
+    print_error("Decompression failed with error code: %d", result);
+    return EXIT_FAILURE;
+  }
 
   *output_data = uncompressed_data;
   *output_size = expanded_size;

@@ -11,6 +11,8 @@ add_library(cx
 
 add_executable(nsmbw-compress
   nsmbw_compress.c
+  nsmbw_compress_szs.c
+  nsmbw_compress_szp.c
 )
 
 target_compile_options(cx PRIVATE
