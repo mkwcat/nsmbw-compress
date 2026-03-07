@@ -41,9 +41,12 @@ bool nsmbw_compress_lh_encode(const uint8_t *src, uint8_t *dst,
     return false;
   }
 
+  nsmbw_compress_print_verbose("CXCompressLH()...");
   *dst_length = CXCompressLH(
       src, src_length, dst, ((uint8_t *)work_buffer) + CX_COMPRESS_LH_WORK_SIZE,
       work_buffer);
+  nsmbw_compress_print_verbose("CXCompressLH() done, output size: %zu",
+                               *dst_length);
 
   free(work_buffer);
 

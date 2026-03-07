@@ -18,6 +18,7 @@ add_executable(nsmbw-compress
   nsmbw_compress_lrc.c
   nsmbw_compress_filter_diff.c
   nsmbw_compress_szs.c
+  nsmbw_compress_test.c
 )
 
 target_compile_options(cx PRIVATE

@@ -29,8 +29,11 @@ bool nsmbw_compress_lz_encode(const uint8_t *src, uint8_t *dst,
     return false;
   }
 
+  nsmbw_compress_print_verbose("CXCompressLZImpl()...");
   *dst_length = CXCompressLZImpl(src, src_length, dst, work_buffer,
                                  params->lz77_extended);
+  nsmbw_compress_print_verbose("CXCompressLZImpl() done, output size: %zu",
+                               *dst_length);
   free(work_buffer);
 
   return *dst_length != 0;

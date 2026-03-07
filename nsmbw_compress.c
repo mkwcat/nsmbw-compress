@@ -127,13 +127,22 @@ static const struct nsmbw_compress_argument arguments[] = {
 #define argument_index_old_lz77 5
     },
     {
+        .short_name = '\0',
+        .long_name = "test",
+        .long_name_length = sizeof("test") - 1,
+        .description = "Run internal tests and exit",
+        .type = nsmbw_compress_argument_type_bool,
+        .index = 6,
+#define argument_index_test 6
+    },
+    {
         .short_name = 'v',
         .long_name = "verbose",
         .long_name_length = sizeof("verbose") - 1,
         .description = "Print verbose output",
         .type = nsmbw_compress_argument_type_bool,
-        .index = 6,
-#define argument_index_verbose 6
+        .index = 7,
+#define argument_index_verbose 7
     },
 };
 
@@ -251,8 +260,12 @@ static int exit_print_help() {
   puts("Options:");
   for (size_t i = 0; i < argument_count; i++) {
     const struct nsmbw_compress_argument *arg = &arguments[i];
-    printf("  -%c, --%-8s %s\n", arg->short_name, arg->long_name,
-           arg->description);
+    if (arg->short_name) {
+      printf("  -%c, --%-8s %s\n", arg->short_name, arg->long_name,
+             arg->description);
+    } else {
+      printf("      --%-8s %s\n", arg->long_name, arg->description);
+    }
   }
   printf("Supported types for compression:\n"
          "  ");
@@ -273,10 +286,10 @@ static int exit_print_help() {
   return EXIT_FAILURE;
 }
 
-static int exit_unknown_argument(const char *arg) {
+static bool exit_unknown_argument(const char *arg) {
   nsmbw_compress_print_error("Unknown argument: %s", arg);
   nsmbw_compress_print_error("Use --help to see available options.");
-  return EXIT_FAILURE;
+  return false;
 }
 
 static bool parse_argument_value(const struct nsmbw_compress_argument *arg_info,
@@ -609,9 +622,10 @@ static int main_compress(const void *input_file, size_t input_file_size,
   }
 
   struct nsmbw_compress_parameters params = {
-      .lz77_extended = argument_specified[argument_index_old_lz77]
-                           ? argument_values[argument_index_old_lz77].bool_value
-                           : false,
+      .lz77_extended =
+          argument_specified[argument_index_old_lz77]
+              ? !argument_values[argument_index_old_lz77].bool_value
+              : true,
       .huff_bit_size = argument_specified[argument_index_bitsize]
                            ? argument_values[argument_index_bitsize].int_value
                            : 8,
@@ -630,6 +644,8 @@ static int main_compress(const void *input_file, size_t input_file_size,
   return EXIT_SUCCESS;
 }
 
+extern int nsmbw_compress_test();
+
 int main(int argc, const char *const *argv) {
   if (argc > 0 && argv[0]) {
     executable_name = strrchr(argv[0], '/');
@@ -647,11 +663,13 @@ int main(int argc, const char *const *argv) {
   if (argument_specified[argument_index_help]) {
     return cleanup_disposable(exit_print_help());
   }
+  if (argument_specified[argument_index_test]) {
+    return cleanup_disposable(nsmbw_compress_test());
+  }
 
   if (input_file_path == nullptr) {
-    (void)exit_print_help();
     nsmbw_compress_print_error("No input file specified.");
-    return cleanup_disposable(EXIT_FAILURE);
+    return cleanup_disposable(exit_print_help());
   }
   nsmbw_compress_print_verbose("Opening input file: %s", input_file_path);
   FILE *input_file = fopen(input_file_path, "rb");

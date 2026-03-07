@@ -21,7 +21,8 @@ bool nsmbw_compress_huff_decode(
 bool nsmbw_compress_huff_encode(
     const uint8_t *src, uint8_t *dst, size_t src_length, size_t *dst_length,
     const struct nsmbw_compress_parameters *params) {
-  void *work_buffer = malloc(CX_COMPRESS_LZ_WORK_SIZE);
+  void *work_buffer =
+      malloc(CX_COMPRESS_HUFFMAN_WORK_SIZE(params->huff_bit_size));
   if (work_buffer == nullptr) {
     nsmbw_compress_print_error(
         "Failed to allocate memory for Huffman compression work buffer: %s",
