@@ -16,7 +16,6 @@ enum nsmbw_compress_type {
   nsmbw_compress_type_lrc,
   nsmbw_compress_type_filter_diff,
   nsmbw_compress_type_szs,
-  nsmbw_compress_type_szp,
 };
 
 struct nsmbw_compress_parameters {
@@ -79,11 +78,6 @@ extern bool nsmbw_compress_filter_diff_decode(
 
 extern bool
 nsmbw_compress_szs_decode(const uint8_t *src, uint8_t *dst, size_t src_length,
-                          size_t *dst_length,
-                          const struct nsmbw_compress_parameters *params);
-
-extern bool
-nsmbw_compress_szp_decode(const uint8_t *src, uint8_t *dst, size_t src_length,
                           size_t *dst_length,
                           const struct nsmbw_compress_parameters *params);
 

@@ -27,7 +27,6 @@ static const nsmbw_compress_function compress_functions[][2] = {
     [nsmbw_compress_type_filter_diff] = {nullptr,
                                          nsmbw_compress_filter_diff_decode},
     [nsmbw_compress_type_szs] = {nullptr, nsmbw_compress_szs_decode},
-    [nsmbw_compress_type_szp] = {nullptr, nsmbw_compress_szp_decode},
 };
 
 static const char *compression_type_names[] = {
@@ -38,7 +37,6 @@ static const char *compression_type_names[] = {
     [nsmbw_compress_type_lrc] = "lrc",
     [nsmbw_compress_type_filter_diff] = "filter-diff",
     [nsmbw_compress_type_szs] = "szs",
-    [nsmbw_compress_type_szp] = "szp",
 };
 
 static const char *compression_default_extensions[] = {
@@ -49,7 +47,6 @@ static const char *compression_default_extensions[] = {
     [nsmbw_compress_type_lrc] = ".LRC",
     [nsmbw_compress_type_filter_diff] = ".DIFF",
     [nsmbw_compress_type_szs] = ".szs",
-    [nsmbw_compress_type_szp] = ".szp",
 };
 
 struct nsmbw_compress_argument {
@@ -187,8 +184,6 @@ static enum nsmbw_compress_type compress_type_from_str(const char *str) {
     return nsmbw_compress_type_filter_diff;
   } else if (strcmp(str, "szs") == 0) {
     return nsmbw_compress_type_szs;
-  } else if (strcmp(str, "szp") == 0) {
-    return nsmbw_compress_type_szp;
   } else {
     return -1; // Invalid type
   }
@@ -402,16 +397,6 @@ static bool get_uncompress_info(const void *input_data, size_t input_size,
     if (input_size < 8) {
       nsmbw_compress_print_error(
           "Input file is too small to be a valid SZS/Yaz0 file");
-      return false;
-    }
-    *expanded_size = nsmbw_compress_util_read_be_u32(input_data, 4);
-    return true;
-  }
-  if (memcmp(input_data, "Yay0", 4) == 0) {
-    *compression_type = nsmbw_compress_type_szp;
-    if (input_size < 8) {
-      nsmbw_compress_print_error(
-          "Input file is too small to be a valid SZP/Yay0 file");
       return false;
     }
     *expanded_size = nsmbw_compress_util_read_be_u32(input_data, 4);
