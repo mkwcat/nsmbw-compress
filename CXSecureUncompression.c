@@ -314,7 +314,7 @@ _Bool CXiVerifyHuffmanTable_(void const *param_1, u8 param_2) {
       continue;
 
     unk_t g = ((*a & 0x3f) + 1) << 1;
-    unk_t h = ((size_t)a >> 1 << 1) + g;
+    size_t h = ((size_t)a >> 1 << 1) + g;
 
     if (*a == 0x00 && f >= c << 1)
       continue;
@@ -574,7 +574,7 @@ static void BitReader_Init(struct BitReader *bitReader, byte_t const *param_2,
 
 static signed char BitReader_Read(struct BitReader *bitReader) {
   if (!bitReader->bit) {
-    if ((u32)bitReader->byteOffset > bitReader->fullSize)
+    if ((u32)bitReader->byteOffset >= bitReader->fullSize)
       return CXSECURE_EBADTYPE;
 
     bitReader->value = bitReader->data[bitReader->byteOffset++];
@@ -609,7 +609,7 @@ _Bool CXiLHVerifyTable(void const *tree, u8 huffBitSize) {
       continue;
 
     unk_t k = ((*treeCast & e) + 1) << 1;
-    unk_t l = ((size_t)treeCast & ~3) + (k << 1);
+    size_t l = ((size_t)treeCast & ~3) + (k << 1);
 
     if (*treeCast == 0x00 && j >= c - 4)
       continue;
