@@ -1117,7 +1117,7 @@ u32 CXCompressLH(byte_t const *srcp, u32 size, byte_t *dstp, byte_t *tmp_dstp,
   // Write tables
   for (int t = 0; t < 2; ++t) {
     const int bitSize = t ? 5 : 9;
-    const u16 tableSize = table[t].treeEntryCount << 1;
+    const u16 tableSize = (table[t].treeEntryCount - 1) << 1;
     const u16 tableByteSize = (bitSize * (tableSize >> 2)) / 8;
     if (bitSize > 8) {
       BitWriter_Write(&bitWriter, (tableByteSize << 8) | (tableByteSize >> 8),
