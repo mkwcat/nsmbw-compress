@@ -1,12 +1,17 @@
+#include "nsmbw_compress.h"
+#include "nsmbw_compress_internal.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
 // Reference: EGG::Decomp::decodeSZS from ogws
 bool nsmbw_compress_szs_decode(const uint8_t *src, uint8_t *dst,
-                               size_t src_length, size_t dst_length) {
-  size_t expand_size = src[4] << 24 | src[5] << 16 | src[6] << 8 | src[7];
-  if (expand_size != dst_length) {
+                               size_t src_length, size_t *dst_length,
+                               const struct nsmbw_compress_parameters *params) {
+  (void)params;
+
+  size_t expand_size = nsmbw_compress_util_read_be_u32(src, 4);
+  if (expand_size != *dst_length) {
     return false; // Output size mismatch
   }
   size_t src_index = 0x10u; // Skip header

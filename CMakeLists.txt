@@ -11,6 +11,12 @@ add_library(cx
 
 add_executable(nsmbw-compress
   nsmbw_compress.c
+  nsmbw_compress_lz.c
+  nsmbw_compress_huff.c
+  nsmbw_compress_rl.c
+  nsmbw_compress_lh.c
+  nsmbw_compress_lrc.c
+  nsmbw_compress_filter_diff.c
   nsmbw_compress_szs.c
   nsmbw_compress_szp.c
 )
