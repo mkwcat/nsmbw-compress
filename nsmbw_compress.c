@@ -1,5 +1,4 @@
 #include "nsmbw_compress.h"
-#include "CXSecureUncompression.h"
 #include "cx.h"
 #include "macros.h"
 #include "nsmbw_compress_internal.h"
@@ -614,7 +613,8 @@ static int main_compress(const void *input_file, size_t input_file_size,
     argument_values[argument_index_output].string_value = output_path;
   }
 
-  void *compressed_data = malloc_disposable(input_file_size * 4);
+  void *compressed_data =
+      malloc_disposable(0x1000 + input_file_size * CX_COMPRESS_DST_SCALE);
   if (compressed_data == nullptr) {
     nsmbw_compress_print_error(
         "Failed to allocate memory for compressed data: %s", strerror(errno));

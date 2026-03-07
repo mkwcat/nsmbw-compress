@@ -63,6 +63,18 @@ static u16 RCGetData_(byte_t const *stream, struct RCInfo *rcInfo,
  * functions
  */
 
+static uint32_t ReadU32LE(const void *data, size_t offset) {
+  const byte_t *dataBytes = (const byte_t *)data;
+  return (uint32_t)dataBytes[offset] | (uint32_t)dataBytes[offset + 1] << 8 |
+         (uint32_t)dataBytes[offset + 2] << 16 |
+         (uint32_t)dataBytes[offset + 3] << 24;
+}
+
+static uint16_t ReadU16LE(const void *data, size_t offset) {
+  const byte_t *dataBytes = (const byte_t *)data;
+  return (uint16_t)dataBytes[offset] | (uint16_t)dataBytes[offset + 1] << 8;
+}
+
 CXSecureResult CXSecureUncompressAny(void const *compressed, u32 length,
                                      void *uncompressed) {
   switch (CXGetCompressionType(compressed)) {
@@ -92,9 +104,9 @@ CXSecureResult CXSecureUncompressRL(void const *compressed, u32 length,
   byte_t const *src = compressed;
   byte_t *dst = uncompressed;
 
-  byte1_t secstat = CXiConvertEndian32_(IN_BUFFER_AT(byte4_t, src, 0));
+  byte1_t secstat = ReadU32LE(src, 0);
 
-  u32 size = CXiConvertEndian32_(IN_BUFFER_AT(byte4_t, src, 0)) >> 8;
+  u32 size = ReadU32LE(src, 0) >> 8;
   s32 remainingLength = length;
 
   if ((secstat & CX_COMPRESSION_TYPE_MASK) != CX_COMPRESSION_TYPE_RUN_LENGTH)
@@ -113,7 +125,7 @@ CXSecureResult CXSecureUncompressRL(void const *compressed, u32 length,
     if (remainingLength < 4)
       return CXSECURE_E2SMALL;
 
-    size = CXiConvertEndian32_(IN_BUFFER_AT(byte4_t, src, 0));
+    size = ReadU32LE(src, 0);
     src += sizeof(byte4_t);
     remainingLength -= sizeof(byte4_t);
   }
@@ -175,8 +187,8 @@ CXSecureResult CXSecureUncompressLZ(void const *compressed, u32 length,
   byte_t const *src = compressed;
   byte_t *dst = uncompressed;
 
-  u8 secstat = CXiConvertEndian32_(IN_BUFFER_AT(byte4_t, src, 0)) & 0xff;
-  u32 size = CXiConvertEndian32_(IN_BUFFER_AT(byte4_t, src, 0)) >> 8;
+  u8 secstat = ReadU32LE(src, 0) & 0xff;
+  u32 size = ReadU32LE(src, 0) >> 8;
   s32 remainingLength = length;
 
   BOOL stat = BOOLIFY_TERNARY(IN_BUFFER_AT(byte1_t, src, 0) & 0x0f);
@@ -197,7 +209,7 @@ CXSecureResult CXSecureUncompressLZ(void const *compressed, u32 length,
     if (remainingLength < 4)
       return CXSECURE_E2SMALL;
 
-    size = CXiConvertEndian32_(IN_BUFFER_AT(byte4_t, src, 0));
+    size = ReadU32LE(src, 0);
     src += sizeof(byte4_t);
     remainingLength -= sizeof(byte4_t);
   }
@@ -341,8 +353,8 @@ CXSecureResult CXSecureUncompressHuffman(void const *compressed, u32 length,
   byte_t const *src = compressed;
   byte_t *dst = uncompressed;
 
-  u8 secstat = CXiConvertEndian32_(IN_BUFFER_AT(byte4_t const, src, 0)) & 0xff;
-  s32 size = CXiConvertEndian32_(IN_BUFFER_AT(byte4_t, src, 0)) >> 8;
+  u8 secstat = ReadU32LE(src, 0) & 0xff;
+  s32 size = ReadU32LE(src, 0) >> 8;
 
   byte_t const *base = size ? src + 4 : src + 8;
   byte_t const *basep1 = base + 1;
@@ -364,7 +376,7 @@ CXSecureResult CXSecureUncompressHuffman(void const *compressed, u32 length,
     if (length < e + 8)
       return CXSECURE_E2SMALL;
 
-    size = CXiConvertEndian32_(IN_BUFFER_AT(byte4_t, src, 4));
+    size = ReadU32LE(src, 4);
   } else {
     if (length < e + 4)
       return CXSECURE_E2SMALL;
@@ -389,7 +401,7 @@ CXSecureResult CXSecureUncompressHuffman(void const *compressed, u32 length,
     // NOTE: assignment to lvalue cast is a CW extension
     f = CXiConvertEndian32_(*((byte4_t *)(src))++);
 #else
-    f = CXiConvertEndian32_(IN_BUFFER_AT(byte4_t, src, 0));
+    f = ReadU32LE(src, 0);
     src += sizeof(byte4_t);
 #endif
 
@@ -403,8 +415,8 @@ CXSecureResult CXSecureUncompressHuffman(void const *compressed, u32 length,
       h <<= g;
 
       // ok
-      base = (byte_t const *)((((size_t)(base) >> 1) << 1) +
-                              (((*base & 0x3f) + 1) << 1) + g);
+      byte_t const *baseAligned = (byte_t const *)(((size_t)(base) >> 1) << 1);
+      base = baseAligned + (((*base & 0x3f) + 1) << 1) + g;
 
       if (h & 0x80) {
         b >>= stat;
@@ -423,7 +435,10 @@ CXSecureResult CXSecureUncompressHuffman(void const *compressed, u32 length,
           // NOTE: assignment to lvalue cast is a CW extension
           *((byte4_t *)(dst))++ = CXiConvertEndian32_(b);
 #else
-          *(byte4_t *)dst = CXiConvertEndian32_(b);
+          dst[0] = b & 0xFF;
+          dst[1] = b >> 8;
+          dst[2] = b >> 16;
+          dst[3] = b >> 24;
           dst += sizeof(byte4_t);
 #endif
           size -= sizeof(byte4_t);
@@ -464,7 +479,7 @@ static unk_t CXiHuffImportTree(u16 *tree, byte_t const *param_2, u8 huffBitSize,
   g = (1 << huffBitSize) << 1;
 
   if (huffBitSize > 8) {
-    b = CXiConvertEndian16_(IN_BUFFER_AT(byte2_t, param_2, 0));
+    b = ReadU16LE(param_2, 0);
 
     param_2 += sizeof(byte2_t);
     f += sizeof(byte2_t);
@@ -507,8 +522,8 @@ CXSecureResult CXSecureUnfilterDiff(void const *compressed, u32 length,
   byte_t *dst = uncompressed;
 
   u32 stat = IN_BUFFER_AT(byte1_t, src, 0) & 0x0f;
-  u8 stat2 = CXiConvertEndian32_(IN_BUFFER_AT(byte4_t, src, 0)) & 0xff;
-  s32 size = CXiConvertEndian32_(IN_BUFFER_AT(byte4_t, src, 0)) >> 8;
+  u8 stat2 = ReadU32LE(src, 0) & 0xff;
+  s32 size = ReadU32LE(src, 0) >> 8;
   u32 sum = 0;
 
   s32 remainingLength = length;
@@ -541,7 +556,7 @@ CXSecureResult CXSecureUnfilterDiff(void const *compressed, u32 length,
     } while (size > 0);
   } else {
     do {
-      byte2_t num = CXiConvertEndian16_(*(byte2_t *)src);
+      byte2_t num = ReadU16LE(src, 0);
       src += sizeof(byte2_t);
 
       remainingLength -= sizeof(byte2_t);
@@ -552,7 +567,8 @@ CXSecureResult CXSecureUnfilterDiff(void const *compressed, u32 length,
 
       sum += num;
 
-      *(byte2_t *)dst = CXiConvertEndian16_(sum);
+      dst[0] = sum & 0xFF;
+      dst[1] = sum >> 8;
       dst += sizeof(byte2_t);
     } while (size > 0);
   }
@@ -677,11 +693,11 @@ CXSecureResult CXSecureUncompressLH(void const *compressed, u32 length,
   u16 *work_end ATTR_UNUSED = param_4 + 0x440;
 
   // size
-  size = CXiConvertEndian32_(IN_BUFFER_AT(byte4_t, src, 0)) >> 8;
+  size = ReadU32LE(src, 0) >> 8;
   src += sizeof(byte4_t);
 
   if (!size) {
-    size = CXiConvertEndian32_(IN_BUFFER_AT(byte4_t, src, 0));
+    size = ReadU32LE(src, 0);
     src += sizeof(byte4_t);
 
     if (length < 8)
@@ -893,11 +909,11 @@ CXSecureResult CXSecureUncompressLRC(void const *compressed, u32 length,
   RCInitState_(&state);
 
   // size
-  size = CXiConvertEndian32_(IN_BUFFER_AT(byte4_t, src, 0)) >> 8;
+  size = ReadU32LE(src, 0) >> 8;
   src += sizeof(byte4_t);
 
   if (!size) {
-    size = CXiConvertEndian32_(IN_BUFFER_AT(byte4_t, src, 0));
+    size = ReadU32LE(src, 0);
     src += sizeof(byte4_t);
 
     if (length < 8)

@@ -58,19 +58,20 @@ static void run_compression_tests() {
     if (!encode_func(generated_uncompressed_data, compressed_data, BUFFER_SIZE,
                      &compressed_size, &params)) {
       printf("  Compression failed\n");
-      continue;
+      exit(EXIT_FAILURE);
     }
 
     size_t decompressed_size = BUFFER_SIZE;
     if (!decode_func(compressed_data, decompressed_data, compressed_size,
                      &decompressed_size, &params)) {
       printf("  Decompression failed\n");
-      continue;
+      exit(EXIT_FAILURE);
     }
 
     if (memcmp(generated_uncompressed_data, decompressed_data, BUFFER_SIZE) !=
         0) {
       printf("  Decompressed data does not match original uncompressed data\n");
+      exit(EXIT_FAILURE);
     } else {
       printf("  Compression and decompression successful\n");
     }
@@ -79,7 +80,7 @@ static void run_compression_tests() {
 
 int nsmbw_compress_test() {
   generated_uncompressed_data = malloc(BUFFER_SIZE);
-  compressed_data = malloc(3 * BUFFER_SIZE);
+  compressed_data = malloc(0x1000 + BUFFER_SIZE * 4);
   decompressed_data = malloc(BUFFER_SIZE);
 
   for (size_t i = 0; i < BUFFER_SIZE; ++i) {
