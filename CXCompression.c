@@ -121,7 +121,7 @@ u32 CXCompressLZImpl(byte_t const *srcp, u32 size, byte_t *dstp, void *work,
     length = sizeof(byte4_t) + sizeof(byte4_t);
   }
 
-  f = size;
+  f = size * CX_COMPRESS_DST_SCALE;
 
   struct LZTable table;
   LZInitTable(&table, work, 0x1000);
@@ -379,7 +379,7 @@ u32 CXCompressRL(byte_t const *srcp, u32 size, byte_t *dstp) {
     }
 
     if (f) {
-      if (b + f + 1 >= size)
+      if (b + f + 1 >= size * CX_COMPRESS_DST_SCALE)
         return 0;
 
       dstp[b++] = f - 1;
@@ -406,7 +406,7 @@ u32 CXCompressRL(byte_t const *srcp, u32 size, byte_t *dstp) {
         ++e;
       }
 
-      if (b + 2 >= size)
+      if (b + 2 >= size * CX_COMPRESS_DST_SCALE)
         return 0;
 
       dstp[b++] = (e - 3) | 0x80;
@@ -464,7 +464,8 @@ u32 CXCompressHuffman(byte_t const *srcp, u32 size, byte_t *dstp,
 
   u32 length = headerLength;
 
-  if (length + ((table.treeEntryCount + 1) << 1) >= size)
+  if (length + ((table.treeEntryCount + 1) << 1) >=
+      size * CX_COMPRESS_DST_SCALE)
     return 0;
 
   for (i = 0; i < (u16)((table.treeEntryCount + 1) << 1); ++i) {
@@ -482,8 +483,9 @@ u32 CXCompressHuffman(byte_t const *srcp, u32 size, byte_t *dstp,
   }
 
   { // random block
-    unk_t c = HuffConvertData(table.at_0x00, srcp, dstp + length, size,
-                              size - length, huffBitSize);
+    unk_t c =
+        HuffConvertData(table.at_0x00, srcp, dstp + length, size,
+                        size * CX_COMPRESS_DST_SCALE - length, huffBitSize);
     if (!c)
       return 0;
 
@@ -971,7 +973,7 @@ static u32 LHEncodeLZ(byte_t const *srcp, u32 size, byte_t *dstp, void *work,
 
   length = 0;
 
-  f = size;
+  f = size * CX_COMPRESS_DST_SCALE;
 
   struct LZTable table;
   LZInitTable(&table, work, CX_COMPRESS_LH_LZ_DETAIL_SIZE);
@@ -1173,6 +1175,8 @@ u32 CXCompressLH(byte_t const *srcp, u32 size, byte_t *dstp, byte_t *tmp_dstp,
       flags <<= 1;
     }
   }
+
+  BitWriter_Flush(&bitWriter);
 
   length += bitWriter.offset;
 

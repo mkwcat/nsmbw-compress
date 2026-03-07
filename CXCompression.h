@@ -25,6 +25,8 @@ u32 CXCompressHuffman(byte_t const *srcp, u32 size, byte_t *dstp,
 u32 CXCompressLH(byte_t const *srcp, u32 size, byte_t *dstp, byte_t *tmp_dstp,
                  void *work);
 
+#define CX_COMPRESS_DST_SCALE 4
+
 #define CX_COMPRESS_LZ_WORK_SIZE_DETAIL(LZ_MAX_REFERENCE_SIZE)                 \
   0x400 + (LZ_MAX_REFERENCE_SIZE * 2)
 #define CX_COMPRESS_LZ_WORK_SIZE CX_COMPRESS_LZ_WORK_SIZE_DETAIL(0x1000)
