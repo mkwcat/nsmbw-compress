@@ -21,6 +21,29 @@ u32 CXCompressRL(byte_t const *srcp, u32 size, byte_t *dstp);
 u32 CXCompressHuffman(byte_t const *srcp, u32 size, byte_t *dstp,
                       u8 huffBitSize, void *work);
 
+// Added
+u32 CXCompressLH(byte_t const *srcp, u32 size, byte_t *dstp, byte_t *tmp_dstp,
+                 void *work);
+
+#define CX_COMPRESS_LZ_WORK_SIZE_DETAIL(LZ_MAX_REFERENCE_SIZE)                 \
+  0x400 + (LZ_MAX_REFERENCE_SIZE * 2)
+#define CX_COMPRESS_LZ_WORK_SIZE CX_COMPRESS_LZ_WORK_SIZE_DETAIL(0x1000)
+
+#define CX_COMPRESS_HUFFMAN_WORK_SIZE(HUFF_BIT_SIZE)                           \
+  ((1 << (HUFF_BIT_SIZE)) * 0x30 + (1 << (HUFF_BIT_SIZE)) * 0x4 +              \
+   (1 << (HUFF_BIT_SIZE)) * 0x6)
+
+#define CX_COMPRESS_LH_LZ_DETAIL_SIZE 0x8000
+
+struct CXiCompressLHWork {
+  _Alignas(4) byte_t huffLWork[CX_COMPRESS_HUFFMAN_WORK_SIZE(9)];
+  _Alignas(4) byte_t huffRWork[CX_COMPRESS_HUFFMAN_WORK_SIZE(5)];
+  _Alignas(4) byte_t
+      lzWork[CX_COMPRESS_LZ_WORK_SIZE_DETAIL(CX_COMPRESS_LH_LZ_DETAIL_SIZE)];
+};
+
+#define CX_COMPRESS_LH_WORK_SIZE sizeof(struct CXiCompressLHWork)
+
 #ifdef __cplusplus
 }
 #endif

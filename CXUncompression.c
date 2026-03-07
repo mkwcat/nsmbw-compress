@@ -16,10 +16,10 @@
  */
 
 struct BitReader {
-  byte_t const *at_0x00;   // size 0x04, offset 0x00
-  unk4_t at_0x04;          // size 0x04, offset 0x04
+  byte_t const *data;   // size 0x04, offset 0x00
+  unk4_t byteOffset;          // size 0x04, offset 0x04
   unk4_t unsigned at_0x08; // size 0x04, offset 0x08
-  unk4_t at_0x0c;          // size 0x04, offset 0x0c
+  unk4_t bit;          // size 0x04, offset 0x0c
 }; // size 0x10?
 
 struct RCInfo {
@@ -284,12 +284,12 @@ void CXUncompressHuffman(void const *compressed, void *uncompressed) {
   }
 }
 
-static unk_t CXiHuffImportTree(u16 *tree, byte_t const *stream, u8 param_3) {
+static unk_t CXiHuffImportTree(u16 *tree, byte_t const *stream, u8 bit_size) {
   unk_t a;
   unk_t b;
   unk_t unsigned c;
   unk_t unsigned d;
-  unk_t e;
+  unk_t bit_size_mask;
   unk_t unsigned f;
   unk_t unsigned g;
 
@@ -297,12 +297,12 @@ static unk_t CXiHuffImportTree(u16 *tree, byte_t const *stream, u8 param_3) {
   c = 0;
 
   d = 0;
-  e = (1 << param_3) - 1;
+  bit_size_mask = (1 << bit_size) - 1;
 
   f = 0;
-  g = (1 << param_3) << 1;
+  g = (1 << bit_size) << 1;
 
-  if (param_3 > 8) {
+  if (bit_size > 8) {
     b = CXiConvertEndian16_(IN_BUFFER_AT(byte2_t, stream, 0));
 
     stream += sizeof(byte2_t);
@@ -317,7 +317,7 @@ static unk_t CXiHuffImportTree(u16 *tree, byte_t const *stream, u8 param_3) {
   b = (b + 1) << 2;
 
   while (f < b) {
-    while (d < param_3) {
+    while (d < bit_size) {
       c <<= 8;
       c |= *stream++;
       ++f;
@@ -325,9 +325,9 @@ static unk_t CXiHuffImportTree(u16 *tree, byte_t const *stream, u8 param_3) {
     }
 
     if (a < g)
-      tree[a++] = e & (c >> (d - param_3));
+      tree[a++] = bit_size_mask & (c >> (d - bit_size));
 
-    d -= param_3;
+    d -= bit_size;
   }
 
   (void)stream;
@@ -336,20 +336,20 @@ static unk_t CXiHuffImportTree(u16 *tree, byte_t const *stream, u8 param_3) {
 }
 
 static void BitReader_Init(struct BitReader *bitReader, byte_t const *stream) {
-  bitReader->at_0x00 = stream;
-  bitReader->at_0x04 = 0;
+  bitReader->data = stream;
+  bitReader->byteOffset = 0;
   bitReader->at_0x08 = 0;
-  bitReader->at_0x0c = 0;
+  bitReader->bit = 0;
 }
 
 static byte_t BitReader_Read(struct BitReader *bitReader) {
-  if (!bitReader->at_0x0c) {
-    bitReader->at_0x08 = bitReader->at_0x00[bitReader->at_0x04++];
-    bitReader->at_0x0c = 8;
+  if (!bitReader->bit) {
+    bitReader->at_0x08 = bitReader->data[bitReader->byteOffset++];
+    bitReader->bit = 8;
   }
 
-  byte_t a = (bitReader->at_0x08 >> (bitReader->at_0x0c - 1)) & 0x01;
-  --bitReader->at_0x0c;
+  byte_t a = (bitReader->at_0x08 >> (bitReader->bit - 1)) & 0x01;
+  --bitReader->bit;
 
   return a;
 }
@@ -359,8 +359,8 @@ void CXUncompressLH(void const *compressed, byte_t *uncompressed,
   u32 size;
   unk_t a = 0;
   byte_t const *src = compressed;
-  u16 *b = param_3;
-  u16 *c = param_3 + 0x400;
+  u16 *ltree = param_3;
+  u16 *rtree = param_3 + 0x400;
 
   // size
   size = CXiConvertEndian32_(IN_BUFFER_AT(byte4_t, src, 0)) >> 8;
@@ -371,15 +371,15 @@ void CXUncompressLH(void const *compressed, byte_t *uncompressed,
     src += sizeof(byte4_t);
   }
 
-  src += CXiHuffImportTree(b, src, 9);
-  src += CXiHuffImportTree(c, src, 5);
+  src += CXiHuffImportTree(ltree, src, 9);
+  src += CXiHuffImportTree(rtree, src, 5);
 
   struct BitReader bitReader;
   BitReader_Init(&bitReader, src);
 
   while (a < size) {
     u16 d;
-    u16 *e = b + 1;
+    u16 *e = ltree + 1;
 
     while (true) {
       byte_t f = BitReader_Read(&bitReader);
@@ -402,19 +402,19 @@ void CXUncompressLH(void const *compressed, byte_t *uncompressed,
 
     u16 h;
     u16 j = (d & 0xff) + 3;
-    u16 *k = c + 1;
+    u16 *rtree_val = rtree + 1;
 
     while (true) {
       byte_t l = BitReader_Read(&bitReader);
-      u32 m = (((*k & 0x07) + 1) << 1) + l;
+      u32 m = (((*rtree_val & 0x07) + 1) << 1) + l;
 
-      if (*k & (0x10 >> l)) {
-        k = ROUND_DOWN_PTR(k, 4);
-        d = k[m];
+      if (*rtree_val & (0x10 >> l)) {
+        rtree_val = ROUND_DOWN_PTR(rtree_val, 4);
+        d = rtree_val[m];
         break;
       } else {
-        k = ROUND_DOWN_PTR(k, 4);
-        k += m;
+        rtree_val = ROUND_DOWN_PTR(rtree_val, 4);
+        rtree_val += m;
       }
     }
 

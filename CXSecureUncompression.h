@@ -53,6 +53,10 @@ CXSecureResult CXSecureUncompressLH(void const *compressed, u32 length,
 CXSecureResult CXSecureUncompressLRC(void const *compressed, u32 length,
                                      byte_t *uncompressed, unsigned *);
 
+// Sizes assumed based on EGG::StreamDecomp
+#define CX_SECURE_UNCOMPRESS_LH_WORK_SIZE 0x8B0
+#define CX_SECURE_UNCOMPRESS_LRC_WORK_SIZE 0x9030
+
 #ifdef __cplusplus
 }
 #endif

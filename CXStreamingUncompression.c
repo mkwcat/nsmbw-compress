@@ -15,11 +15,11 @@
  */
 
 struct BitReader {
-  byte_t const *at_0x00;   // size 0x04, offset 0x00
-  unk4_t at_0x04;          // size 0x04, offset 0x04
-  unk4_t unsigned at_0x08; // size 0x04, offset 0x08
-  unk4_t unsigned at_0x0c; // size 0x04, offset 0x0c
-  unk4_t at_0x10;          // size 0x04, offset 0x0c
+  byte_t const *data;   // size 0x04, offset 0x00
+  unk4_t byteOffset;          // size 0x04, offset 0x04
+  unk4_t unsigned value; // size 0x04, offset 0x08
+  unk4_t unsigned bit; // size 0x04, offset 0x0c
+  unk4_t fullSize;          // size 0x04, offset 0x0c
 }; // size 0x14?
 
 struct RCInfo {
@@ -467,10 +467,10 @@ CXStreamingResult CXReadUncompLH(CXUncompContextLH *context,
   byte_t const *src = compressed;
 
   struct BitReader bitReader;
-  bitReader.at_0x00 = src;
-  bitReader.at_0x04 = size;
-  bitReader.at_0x08 = context->at_0x89c;
-  bitReader.at_0x0c = context->at_0x8a0;
+  bitReader.data = src;
+  bitReader.byteOffset = size;
+  bitReader.value = context->at_0x89c;
+  bitReader.bit = context->at_0x8a0;
 
   while (context->at_0x8a7) {
     unk8_t signed a = BitReader_ReadEx(&bitReader, 32);
@@ -683,10 +683,10 @@ CXStreamingResult CXReadUncompLH(CXUncompContextLH *context,
   }
 
 end:
-  context->at_0x89c = bitReader.at_0x08;
-  context->at_0x8a0 = bitReader.at_0x0c;
+  context->at_0x89c = bitReader.value;
+  context->at_0x8a0 = bitReader.bit;
 
-  if (!context->at_0x004 && !context->at_0x008 && bitReader.at_0x0c > 0x20)
+  if (!context->at_0x004 && !context->at_0x008 && bitReader.bit > 0x20)
     return CXSTREAM_E2BIG;
 
   return context->at_0x004;
@@ -694,21 +694,21 @@ end:
 
 static unk_t signed BitReader_Read(struct BitReader *bitReader,
                                    unk1_t unsigned param_2) {
-  while (bitReader->at_0x0c < param_2) {
-    if (!bitReader->at_0x04)
+  while (bitReader->bit < param_2) {
+    if (!bitReader->byteOffset)
       return -1;
 
-    bitReader->at_0x08 <<= 8;
-    bitReader->at_0x08 += *bitReader->at_0x00;
-    ++bitReader->at_0x00;
-    --bitReader->at_0x04;
-    bitReader->at_0x0c += 8;
+    bitReader->value <<= 8;
+    bitReader->value += *bitReader->data;
+    ++bitReader->data;
+    --bitReader->byteOffset;
+    bitReader->bit += 8;
   }
 
   unk_t signed a = ((1 << param_2) - 1) &
-                   (bitReader->at_0x08 >> (bitReader->at_0x0c - param_2));
+                   (bitReader->value >> (bitReader->bit - param_2));
 
-  bitReader->at_0x0c -= param_2;
+  bitReader->bit -= param_2;
 
   return a;
 }
@@ -717,25 +717,25 @@ static unk8_t BitReader_ReadEx(struct BitReader *bitReader,
                                unk1_t unsigned param_2) {
   unk1_t unsigned a = 0;
 
-  while (bitReader->at_0x0c < param_2) {
-    if (!bitReader->at_0x04)
+  while (bitReader->bit < param_2) {
+    if (!bitReader->byteOffset)
       return -1;
 
-    if (bitReader->at_0x0c > 24)
-      a = bitReader->at_0x08 >> 24;
+    if (bitReader->bit > 24)
+      a = bitReader->value >> 24;
 
-    bitReader->at_0x08 <<= 8;
-    bitReader->at_0x08 += *bitReader->at_0x00;
-    ++bitReader->at_0x00;
-    --bitReader->at_0x04;
-    bitReader->at_0x0c += 8;
+    bitReader->value <<= 8;
+    bitReader->value += *bitReader->data;
+    ++bitReader->data;
+    --bitReader->byteOffset;
+    bitReader->bit += 8;
   }
 
-  unk8_t b = bitReader->at_0x08;
+  unk8_t b = bitReader->value;
   b |= (unk8_t)a << 32;
-  b = (b >> (bitReader->at_0x0c - param_2)) & ((1 << param_2) - 1);
+  b = (b >> (bitReader->bit - param_2)) & ((1 << param_2) - 1);
 
-  bitReader->at_0x0c -= param_2;
+  bitReader->bit -= param_2;
 
   return b;
 }

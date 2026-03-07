@@ -9,18 +9,17 @@
 #include "decomp.h" // unk_t
 #include "macros.h"
 #include "types.h"
-#include <stdio.h>
 
 /*******************************************************************************
  * types
  */
 
 struct BitReader {
-  byte_t const *at_0x00;   // size 0x04, offset 0x00
-  unk4_t at_0x04;          // size 0x04, offset 0x04
-  unk4_t unsigned at_0x08; // size 0x04, offset 0x08
-  unk4_t at_0x0c;          // size 0x04, offset 0x0c
-  unk4_t at_0x10;          // size 0x04, offset 0x0c
+  byte_t const *data;    // size 0x04, offset 0x00
+  unk4_t byteOffset;     // size 0x04, offset 0x04
+  unk4_t unsigned value; // size 0x04, offset 0x08
+  unk4_t bit;            // size 0x04, offset 0x0c
+  unk4_t fullSize;       // size 0x04, offset 0x0c
 }; // size 0x14?
 
 struct RCInfo {
@@ -445,7 +444,7 @@ CXSecureResult CXSecureUncompressHuffman(void const *compressed, u32 length,
   return CXSECURE_ESUCCESS;
 }
 
-static unk_t CXiHuffImportTree(u16 *tree, byte_t const *param_2, u8 param_3,
+static unk_t CXiHuffImportTree(u16 *tree, byte_t const *param_2, u8 huffBitSize,
                                unk_t unsigned param_4) {
   unk_t a;
   unk_t b;
@@ -459,12 +458,12 @@ static unk_t CXiHuffImportTree(u16 *tree, byte_t const *param_2, u8 param_3,
   c = 0;
 
   d = 0;
-  e = (1 << param_3) - 1;
+  e = (1 << huffBitSize) - 1;
 
   f = 0;
-  g = (1 << param_3) << 1;
+  g = (1 << huffBitSize) << 1;
 
-  if (param_3 > 8) {
+  if (huffBitSize > 8) {
     b = CXiConvertEndian16_(IN_BUFFER_AT(byte2_t, param_2, 0));
 
     param_2 += sizeof(byte2_t);
@@ -482,7 +481,7 @@ static unk_t CXiHuffImportTree(u16 *tree, byte_t const *param_2, u8 param_3,
     return b;
 
   while (f < b) {
-    while (d < param_3) {
+    while (d < huffBitSize) {
       c <<= 8;
       c |= *param_2++;
       ++f;
@@ -490,12 +489,14 @@ static unk_t CXiHuffImportTree(u16 *tree, byte_t const *param_2, u8 param_3,
     }
 
     if (a < g)
-      tree[a++] = e & (c >> (d - param_3));
+      tree[a++] = e & (c >> (d - huffBitSize));
 
-    d -= param_3;
+    d -= huffBitSize;
   }
 
   (void)param_2;
+
+  tree[0] = a - 1;
 
   return b;
 }
@@ -564,64 +565,64 @@ CXSecureResult CXSecureUnfilterDiff(void const *compressed, u32 length,
 
 static void BitReader_Init(struct BitReader *bitReader, byte_t const *param_2,
                            unk_t param_3) {
-  bitReader->at_0x00 = param_2;
-  bitReader->at_0x04 = 0;
-  bitReader->at_0x08 = 0;
-  bitReader->at_0x0c = 0;
-  bitReader->at_0x10 = param_3;
+  bitReader->data = param_2;
+  bitReader->byteOffset = 0;
+  bitReader->value = 0;
+  bitReader->bit = 0;
+  bitReader->fullSize = param_3;
 }
 
 static signed char BitReader_Read(struct BitReader *bitReader) {
-  if (!bitReader->at_0x0c) {
-    if ((u32)bitReader->at_0x04 > bitReader->at_0x10)
+  if (!bitReader->bit) {
+    if ((u32)bitReader->byteOffset > bitReader->fullSize)
       return CXSECURE_EBADTYPE;
 
-    bitReader->at_0x08 = bitReader->at_0x00[bitReader->at_0x04++];
-    bitReader->at_0x0c = 8;
+    bitReader->value = bitReader->data[bitReader->byteOffset++];
+    bitReader->bit = 8;
   }
 
-  signed char a = (bitReader->at_0x08 >> (bitReader->at_0x0c - 1)) & 0x01;
-  --bitReader->at_0x0c;
+  signed char a = (bitReader->value >> (bitReader->bit - 1)) & 0x01;
+  --bitReader->bit;
 
   return a;
 }
 
-_Bool CXiLHVerifyTable(void const *param_1, u8 param_2) {
-  u16 const *a = param_1;
-  u16 const *b = a + 1;
-  unk_t unsigned c = *a;
-  u16 const *d = (u16 *)param_1 + c;
-  u16 e = (1 << (param_2 - 2)) - 1;
-  u16 f = 1 << (param_2 - 1);
-  u16 g = 1 << (param_2 - 2);
+_Bool CXiLHVerifyTable(void const *tree, u8 huffBitSize) {
+  u16 const *treeCast = tree;
+  u16 const *treeData = treeCast + 1;
+  unk_t unsigned c = *treeCast;
+  u16 const *d = (u16 *)tree + c;
+  u16 e = (1 << (huffBitSize - 2)) - 1;
+  u16 f = 1 << (huffBitSize - 1);
+  u16 g = 1 << (huffBitSize - 2);
 
   byte_t h[sizeof(u16) * 0x40];
   for (u32 i = 0; i < ARRAY_LENGTH(h); ++i)
     h[i] = 0;
 
-  if (c > 1 << (param_2 + 1))
+  if (c > 1 << (huffBitSize + 1))
     return false;
 
   unk_t unsigned j = 1;
-  for (a = b; a < d; ++j, (void)++a) {
+  for (treeCast = treeData; treeCast < d; ++j, (void)++treeCast) {
     if (h[j / 8] & (1 << (j % 8)))
       continue;
 
-    unk_t k = ((*a & e) + 1) << 1;
-    unk_t l = ((size_t)a & ~3) + (k << 1);
+    unk_t k = ((*treeCast & e) + 1) << 1;
+    unk_t l = ((size_t)treeCast & ~3) + (k << 1);
 
-    if (*a == 0x00 && j >= c - 4)
+    if (*treeCast == 0x00 && j >= c - 4)
       continue;
 
     if (l >= (size_t)d)
       return false;
 
-    if (*a & f) {
+    if (*treeCast & f) {
       unk_t unsigned m = (j & ~1) + k;
       h[m / 8] |= (byte_t)(1 << (m % 8));
     }
 
-    if (*a & g) {
+    if (*treeCast & g) {
       unk_t unsigned n = (j & ~1) + k + 1;
       h[n / 8] |= (byte_t)(1 << (n % 8));
     }
@@ -630,10 +631,37 @@ _Bool CXiLHVerifyTable(void const *param_1, u8 param_2) {
   return true;
 }
 
+static inline int CXiReadNextHuffValue(struct BitReader *bitReader, u16 *tree,
+                                       u8 huffBitSize) {
+  const u16 *const treeEnd = tree + *tree + 1;
+  tree += 1;
+  const int huffBitTop = (1 << huffBitSize) >> 1;
+  const int huffBitMask = ((1 << huffBitSize) >> 2) - 1;
+
+  do {
+    signed char bit = BitReader_Read(bitReader);
+    unk_t index = (((*tree & huffBitMask) + 1) << 1) + bit;
+
+    if (bit < 0)
+      return CXSECURE_E2SMALL;
+
+    if (*tree & (huffBitTop >> bit)) {
+      tree = ROUND_DOWN_PTR(tree, 4);
+      if (tree + index >= treeEnd)
+        return CXSECURE_EBADTABLE;
+      return tree[index];
+    } else {
+      tree = ROUND_DOWN_PTR(tree, 4);
+      tree += index;
+    }
+  } while (tree < treeEnd);
+  return CXSECURE_EBADTABLE;
+}
+
 CXSecureResult CXSecureUncompressLH(void const *compressed, u32 length,
                                     byte_t *uncompressed, u16 *param_4) {
   u32 size;
-  unk_t unsigned a = 0;
+  unk_t unsigned outpos = 0;
   byte_t const *src = compressed;
 
   if ((IN_BUFFER_AT(byte1_t, compressed, 0) & CX_COMPRESSION_TYPE_MASK) !=
@@ -644,9 +672,9 @@ CXSecureResult CXSecureUncompressLH(void const *compressed, u32 length,
   if (length <= 4)
     return CXSECURE_E2SMALL;
 
-  u16 *b = param_4;
-  u16 *c = param_4 + 0x400;
-  u16 *n ATTR_UNUSED = param_4 + 0x440;
+  u16 *tree0 = param_4;
+  u16 *tree1 = param_4 + 0x400;
+  u16 *work_end ATTR_UNUSED = param_4 + 0x440;
 
   // size
   size = CXiConvertEndian32_(IN_BUFFER_AT(byte4_t, src, 0)) >> 8;
@@ -660,105 +688,71 @@ CXSecureResult CXSecureUncompressLH(void const *compressed, u32 length,
       return CXSECURE_E2SMALL;
   }
 
-  src +=
-      CXiHuffImportTree(b, src, 9, length - ((size_t)src - (size_t)compressed));
-
+  src += CXiHuffImportTree(tree0, src, 9,
+                           length - ((size_t)src - (size_t)compressed));
   if ((size_t)src > (size_t)compressed + length)
     return CXSECURE_E2SMALL;
 
-  if (!CXiLHVerifyTable(b, 9))
+  if (!CXiLHVerifyTable(tree0, 9))
     return CXSECURE_EBADTABLE;
 
-  src +=
-      CXiHuffImportTree(c, src, 5, length - ((size_t)src - (size_t)compressed));
+  src += CXiHuffImportTree(tree1, src, 5,
+                           length - ((size_t)src - (size_t)compressed));
 
   if ((size_t)src > (size_t)compressed + length)
     return CXSECURE_E2SMALL;
 
-  if (!CXiLHVerifyTable(c, 5))
+  if (!CXiLHVerifyTable(tree1, 5))
     return CXSECURE_EBADTABLE;
 
   struct BitReader bitReader;
   BitReader_Init(&bitReader, src, length - ((size_t)src - (size_t)compressed));
 
-  while (a < size) {
-    u16 d;
-    u16 *e = b + 1;
+  while (outpos < size) {
+    int ret = CXiReadNextHuffValue(&bitReader, tree0, 9);
+    if (ret < 0)
+      return ret;
 
-    while (true) {
-      signed char f = BitReader_Read(&bitReader);
-      unk_t g = (((*e & 0x7f) + 1) << 1) + f;
-
-      if (f < 0)
-        return CXSECURE_E2SMALL;
-
-      if (*e & (0x100 >> f)) {
-        e = ROUND_DOWN_PTR(e, 4);
-        d = e[g];
-        break;
-      } else {
-        e = ROUND_DOWN_PTR(e, 4);
-        e += g;
-      }
-    }
-
-    if (d < 0x100) {
-      uncompressed[a++] = d;
+    if (ret < 0x100) {
+      // LZ flag not set, just a byte
+      uncompressed[outpos++] = ret;
       continue;
     }
 
-    u16 h;
-    u16 j = (d & 0xff) + 3;
-    u16 *k = c + 1;
+    u16 ref_length = (ret & 0xff) + 3;
 
-    while (true) {
-      signed char l = BitReader_Read(&bitReader);
-      u32 m = (((*k & 0x07) + 1) << 1) + l;
+    ret = CXiReadNextHuffValue(&bitReader, tree1, 5);
+    if (ret < 0)
+      return ret;
+    u16 ref_offset_bits = ret;
+    u16 ref_offset = 0;
+    const u16 ref_offset_bits_save = ref_offset_bits;
 
-      if (l < 0)
-        return CXSECURE_E2SMALL;
+    if (ref_offset_bits) {
+      ref_offset = 1;
 
-      if (*k & (0x10 >> l)) {
-        k = ROUND_DOWN_PTR(k, 4);
-        d = k[m];
-        break;
-      } else {
-        k = ROUND_DOWN_PTR(k, 4);
-        k += m;
+      while (--ref_offset_bits) {
+        ref_offset <<= 1;
+        ref_offset |= BitReader_Read(&bitReader);
       }
     }
 
-    h = d;
-    d = 0;
-
-    if (h) {
-      d = 1;
-
-      while (--h) {
-        d <<= 1;
-        d |= BitReader_Read(&bitReader);
-      }
-    }
-
-    // Wait why does it just match like this now
-    d = d + 1;
-
-    if (a < d)
+    if (outpos < ++ref_offset)
       return CXSECURE_EBADSIZE;
 
-    if (a + j > size)
+    if (outpos + ref_length > size)
       return CXSECURE_EBADSIZE;
 
-    while (j--) {
-      uncompressed[a] = uncompressed[a - d];
-      ++a;
+    while (ref_length--) {
+      uncompressed[outpos] = uncompressed[outpos - ref_offset];
+      ++outpos;
     }
   }
 
-  if ((u32)bitReader.at_0x10 - bitReader.at_0x04 > 0x20)
+  if ((u32)bitReader.fullSize - bitReader.byteOffset > 0x20)
     return CXSECURE_E2BIG;
 
-  (void)a;
+  (void)outpos;
   (void)compressed;
 
   return CXSECURE_ESUCCESS;

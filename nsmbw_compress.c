@@ -14,6 +14,7 @@
 
 enum nsmbw_compress_type {
   nsmbw_compress_type_lz,
+  nsmbw_compress_type_lzex,
   nsmbw_compress_type_huff,
   nsmbw_compress_type_rl,
   nsmbw_compress_type_lh,
@@ -66,7 +67,8 @@ static const struct nsmbw_compress_argument arguments[] = {
         .short_name = 't',
         .long_name = "type",
         .long_name_length = sizeof("type") - 1,
-        .description = "Specify the compression type (lz, rl, huff)",
+        .description = "Specify the compression type (lz, lzex, rl, huff, lh, "
+                       "lrc, filter-diff, szs, szp)",
         .type = nsmbw_compress_argument_type_string,
         .index = 2,
 #define argument_index_type 2
@@ -81,21 +83,27 @@ static const struct nsmbw_compress_argument arguments[] = {
 #define argument_index_uncomp 3
     },
     {
+        .short_name = 'b',
+        .long_name = "bitsize",
+        .long_name_length = sizeof("bitsize") - 1,
+        .description =
+            "Specify the bit size for Huffman compression (4 or 8, default: 8)",
+        .type = nsmbw_compress_argument_type_int,
+        .index = 4,
+#define argument_index_bitsize 4
+    },
+    {
         .short_name = 'v',
         .long_name = "verbose",
         .long_name_length = sizeof("verbose") - 1,
         .description = "Print verbose output",
         .type = nsmbw_compress_argument_type_bool,
-        .index = 4,
-#define argument_index_verbose 4
+        .index = 5,
+#define argument_index_verbose 5
     },
 };
 
 static const size_t argument_count = ARRAY_LENGTH(arguments);
-
-// Minimum sizes based on EGG::StreamDecomp
-static const size_t lh_work_buffer_size = 0x8B0;
-static const size_t lrc_work_buffer_size = 0x9030;
 
 static union nsmbw_compress_argument_value
     argument_values[ARRAY_LENGTH(arguments)];
@@ -131,6 +139,8 @@ static const char *str_compress_type(enum nsmbw_compress_type type) {
   switch (type) {
   case nsmbw_compress_type_lz:
     return "lz";
+  case nsmbw_compress_type_lzex:
+    return "lzex";
   case nsmbw_compress_type_huff:
     return "huff";
   case nsmbw_compress_type_rl:
@@ -145,14 +155,41 @@ static const char *str_compress_type(enum nsmbw_compress_type type) {
     return "szs";
   case nsmbw_compress_type_szp:
     return "szp";
+
   default:
     return "unknown";
+  }
+}
+
+static enum nsmbw_compress_type compress_type_from_str(const char *str) {
+  if (strcmp(str, "lz") == 0) {
+    return nsmbw_compress_type_lz;
+  } else if (strcmp(str, "lzex") == 0) {
+    return nsmbw_compress_type_lzex;
+  } else if (strcmp(str, "huff") == 0) {
+    return nsmbw_compress_type_huff;
+  } else if (strcmp(str, "rl") == 0) {
+    return nsmbw_compress_type_rl;
+  } else if (strcmp(str, "lh") == 0) {
+    return nsmbw_compress_type_lh;
+  } else if (strcmp(str, "lrc") == 0) {
+    return nsmbw_compress_type_lrc;
+  } else if (strcmp(str, "filter-diff") == 0) {
+    return nsmbw_compress_type_filter_diff;
+  } else if (strcmp(str, "szs") == 0) {
+    return nsmbw_compress_type_szs;
+  } else if (strcmp(str, "szp") == 0) {
+    return nsmbw_compress_type_szp;
+  } else {
+    return -1; // Invalid type
   }
 }
 
 static const char *str_default_extension(enum nsmbw_compress_type type) {
   switch (type) {
   case nsmbw_compress_type_lz:
+    return ".LZ";
+  case nsmbw_compress_type_lzex:
     return ".LZ";
   case nsmbw_compress_type_huff:
     return ".HUFF";
@@ -377,6 +414,9 @@ static bool get_uncompress_info(const void *input_data, size_t input_size,
   case CX_COMPRESSION_TYPE_LEMPEL_ZIV:
     *compression_type = nsmbw_compress_type_lz;
     break;
+  case CX_COMPRESSION_TYPE_LEMPEL_ZIV | 0x1:
+    *compression_type = nsmbw_compress_type_lzex;
+    break;
   case CX_COMPRESSION_TYPE_HUFFMAN:
     *compression_type = nsmbw_compress_type_huff;
     break;
@@ -460,7 +500,6 @@ static int main_uncompress(const void *input_file, size_t input_file_size,
       return EXIT_FAILURE;
     }
 
-    argument_specified[argument_index_output] = true;
     argument_values[argument_index_output].string_value = output_path;
   }
 
@@ -475,6 +514,7 @@ static int main_uncompress(const void *input_file, size_t input_file_size,
   CXSecureResult result;
   switch (compression_type) {
   case nsmbw_compress_type_lz:
+  case nsmbw_compress_type_lzex:
     print_verbose("CXSecureUncompressLZ()...");
     result =
         CXSecureUncompressLZ(input_file, input_file_size, uncompressed_data);
@@ -491,7 +531,7 @@ static int main_uncompress(const void *input_file, size_t input_file_size,
     break;
   case nsmbw_compress_type_lh:
     print_verbose("CXSecureUncompressLH()...");
-    work_buffer = malloc(lh_work_buffer_size);
+    work_buffer = malloc(CX_SECURE_UNCOMPRESS_LH_WORK_SIZE);
     if (work_buffer == nullptr) {
       print_error(
           "Failed to allocate memory for LH decompression work buffer: %s",
@@ -503,7 +543,7 @@ static int main_uncompress(const void *input_file, size_t input_file_size,
     break;
   case nsmbw_compress_type_lrc:
     print_verbose("CXSecureUncompressLRC()...");
-    work_buffer = malloc(lrc_work_buffer_size);
+    work_buffer = malloc(CX_SECURE_UNCOMPRESS_LRC_WORK_SIZE);
     if (work_buffer == nullptr) {
       print_error(
           "Failed to allocate memory for LRC decompression work buffer: %s",
@@ -550,14 +590,126 @@ static int main_uncompress(const void *input_file, size_t input_file_size,
   return EXIT_SUCCESS;
 }
 
-static int main_compress() {
+static int main_compress(const void *input_file, size_t input_file_size,
+                         void **output_data, size_t *output_size) {
   if (!argument_specified[argument_index_type]) {
     print_warning("No compression --type specified, defaulting to lz");
     argument_specified[argument_index_type] = true;
     argument_values[argument_index_type].string_value = "lz";
   }
-  print_error("main_compress(): Not implemented");
-  return cleanup_disposable(EXIT_FAILURE);
+  enum nsmbw_compress_type compression_type;
+  const char *type_str = argument_values[argument_index_type].string_value;
+  compression_type = compress_type_from_str(type_str);
+  if (compression_type == -1) {
+    print_error("Unknown compression type: %s", type_str);
+    return EXIT_FAILURE;
+  }
+
+  print_verbose("Compression type: %s", str_compress_type(compression_type));
+
+  if (!argument_specified[argument_index_output]) {
+    print_verbose(
+        "No output file specified, automatically determining output file name");
+    // Automatically determine output file name by adding known compression
+    // extensions
+    const char *extension = str_default_extension(compression_type);
+
+    assert(input_file_path);
+    size_t input_path_len = strlen(input_file_path);
+    char *output_path =
+        (char *)malloc_disposable(input_path_len + strlen(extension) + 1);
+    if (output_path == nullptr) {
+      print_error("Failed to allocate memory for output file path: %s",
+                  strerror(errno));
+      return EXIT_FAILURE;
+    }
+    strcpy(output_path, input_file_path);
+    strcat(output_path, extension);
+
+    // We don't want to overwrite a file that already exists
+    print_verbose("Determined output path: %s", output_path);
+    FILE *test_file = fopen(output_path, "rb");
+    if (test_file != nullptr) {
+      print_error("Output file already exists: %s", output_path);
+      fclose(test_file);
+      return EXIT_FAILURE;
+    }
+
+    argument_values[argument_index_output].string_value = output_path;
+  }
+
+  void *compressed_data = malloc_disposable(input_file_size * 4);
+  if (compressed_data == nullptr) {
+    print_error("Failed to allocate memory for compressed data: %s",
+                strerror(errno));
+    return EXIT_FAILURE;
+  }
+
+  u32 length = 0;
+  void *work_buffer = nullptr;
+  switch (compression_type) {
+  case nsmbw_compress_type_lz:
+  case nsmbw_compress_type_lzex:
+    print_verbose("CXCompressLZ()...");
+    work_buffer = malloc(CX_COMPRESS_LZ_WORK_SIZE);
+    if (work_buffer == nullptr) {
+      print_error(
+          "Failed to allocate memory for LZ compression work buffer: %s",
+          strerror(errno));
+      return EXIT_FAILURE;
+    }
+    length = CXCompressLZImpl(input_file, input_file_size, compressed_data,
+                              work_buffer,
+                              compression_type == nsmbw_compress_type_lzex);
+    break;
+  case nsmbw_compress_type_lh:
+    print_verbose("CXCompressLH()...");
+    work_buffer = malloc(CX_COMPRESS_LH_WORK_SIZE + input_file_size * 3);
+    if (work_buffer == nullptr) {
+      print_error(
+          "Failed to allocate memory for LH compression work buffer: %s",
+          strerror(errno));
+      return EXIT_FAILURE;
+    }
+    length = CXCompressLH(input_file, input_file_size, compressed_data,
+                          work_buffer + CX_COMPRESS_LH_WORK_SIZE, work_buffer);
+    break;
+  case nsmbw_compress_type_rl:
+    print_verbose("CXCompressRL()...");
+    length = CXCompressRL(input_file, input_file_size, compressed_data);
+    break;
+  case nsmbw_compress_type_huff:
+    print_verbose("CXCompressHuff()...");
+    work_buffer = malloc(CX_COMPRESS_HUFFMAN_WORK_SIZE(
+        argument_values[argument_index_bitsize].int_value));
+    if (work_buffer == nullptr) {
+      print_error(
+          "Failed to allocate memory for Huffman compression work buffer: %s",
+          strerror(errno));
+      return EXIT_FAILURE;
+    }
+    length = CXCompressHuffman(
+        input_file, input_file_size, compressed_data,
+        argument_values[argument_index_bitsize].int_value, work_buffer);
+    break;
+  default:
+    print_error("Compression type not supported for compression: %s",
+                str_compress_type(compression_type));
+    return EXIT_FAILURE;
+  }
+
+  if (work_buffer) {
+    free(work_buffer);
+  }
+
+  if (length == 0) {
+    print_error("Compression failed");
+    return EXIT_FAILURE;
+  }
+
+  *output_data = compressed_data;
+  *output_size = length;
+  return EXIT_SUCCESS;
 }
 
 int main(int argc, const char *const *argv) {
@@ -577,6 +729,10 @@ int main(int argc, const char *const *argv) {
   if (argument_specified[argument_index_help]) {
     return cleanup_disposable(exit_print_help());
   }
+  if (!argument_specified[argument_index_bitsize]) {
+    argument_values[argument_index_bitsize].int_value = 8;
+  }
+
   if (input_file_path == nullptr) {
     (void)exit_print_help();
     print_error("No input file specified.");
@@ -613,7 +769,8 @@ int main(int argc, const char *const *argv) {
     result = main_uncompress(input_file_data, input_file_size, &output_data,
                              &output_size);
   } else {
-    result = main_compress();
+    result = main_compress(input_file_data, input_file_size, &output_data,
+                           &output_size);
   }
   free(input_file_data);
 
@@ -623,7 +780,6 @@ int main(int argc, const char *const *argv) {
 
   // Output file name must be written (if not provided by the user) by
   // main_compress() or main_uncompress() if they succeed
-  assert(argument_specified[argument_index_output]);
   print_verbose("Opening output file: %s",
                 argument_values[argument_index_output].string_value);
   FILE *output_file =
