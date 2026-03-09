@@ -18,7 +18,8 @@ static const nsmbw_compress_function compress_functions[][2] = {
     [nsmbw_compress_type_lrc] = {nullptr, nsmbw_compress_lrc_decode},
     [nsmbw_compress_type_filter_diff] = {nullptr,
                                          nsmbw_compress_filter_diff_decode},
-    [nsmbw_compress_type_szs] = {nullptr, nsmbw_compress_szs_decode},
+    [nsmbw_compress_type_szs] = {nsmbw_compress_szs_encode,
+                                 nsmbw_compress_szs_decode},
 };
 
 static const char *compression_type_names[] = {

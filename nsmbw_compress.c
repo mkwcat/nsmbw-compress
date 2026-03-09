@@ -25,7 +25,8 @@ static const nsmbw_compress_function compress_functions[][2] = {
     [nsmbw_compress_type_lrc] = {nullptr, nsmbw_compress_lrc_decode},
     [nsmbw_compress_type_filter_diff] = {nullptr,
                                          nsmbw_compress_filter_diff_decode},
-    [nsmbw_compress_type_szs] = {nullptr, nsmbw_compress_szs_decode},
+    [nsmbw_compress_type_szs] = {nsmbw_compress_szs_encode,
+                                 nsmbw_compress_szs_decode},
 };
 
 static const char *compression_type_names[] = {
@@ -404,7 +405,12 @@ static bool get_uncompress_info(const void *input_data, size_t input_size,
     return false;
   }
 
-  if (memcmp(input_data, "Yaz0", 4) == 0) {
+  uint32_t header = nsmbw_compress_util_read_le_u32(input_data, 0);
+
+  // Check for "Yaz0" or "Yaz1"
+  static const uint32_t szs_magic =
+      'Y' | ('a' << 8) | ('z' << 16) | ('0' << 24);
+  if ((header & ~(0x1 << 24)) == szs_magic) {
     *compression_type = nsmbw_compress_type_szs;
     if (input_size < 8) {
       nsmbw_compress_print_error(
@@ -415,7 +421,6 @@ static bool get_uncompress_info(const void *input_data, size_t input_size,
     return true;
   }
 
-  uint32_t header = nsmbw_compress_util_read_le_u32(input_data, 0);
   CXCompressionType cx_type = header & CX_COMPRESSION_TYPE_MASK;
   switch (cx_type) {
   case CX_COMPRESSION_TYPE_LEMPEL_ZIV:

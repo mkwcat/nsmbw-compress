@@ -8,6 +8,7 @@ Supported formats for **compression** are:
 - Run-length (nsmbw: `.RL`)
 - LZ77 + Huffman (nsmbw: `.LH`)
   - Encoding may be currently unstable or inefficient.
+- SZS/Yaz0 (nsmbw: `.szs`)
 
 All formats supported by New Super Mario Bros. Wii can be decompressed, which includes the following:
 - LZ77 (nsmbw: `.LZ`)
@@ -31,7 +32,7 @@ Options:
       --test     Run internal tests and exit
   -v, --verbose  Print verbose output
 Supported types for compression:
-  lz huff rl lh 
+  lz huff rl lh szs
 Supported types for decompression:
   lz huff rl lh lrc filter-diff szs
 ```
