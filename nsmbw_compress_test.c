@@ -15,7 +15,7 @@ static const nsmbw_compress_function compress_functions[][2] = {
     [nsmbw_compress_type_lh] = {nsmbw_compress_lh_encode,
                                 nsmbw_compress_lh_decode},
     [nsmbw_compress_type_lrc] = {NULL, nsmbw_compress_lrc_decode},
-    [nsmbw_compress_type_filter_diff] = {NULL,
+    [nsmbw_compress_type_filter_diff] = {nsmbw_compress_filter_diff_encode,
                                          nsmbw_compress_filter_diff_decode},
     [nsmbw_compress_type_szs] = {nsmbw_compress_szs_encode,
                                  nsmbw_compress_szs_decode},
@@ -52,8 +52,9 @@ static void run_compression_tests() {
 
     size_t compressed_size;
     struct nsmbw_compress_parameters params = {
-        .huff_bit_size = 8,
-        .lz77_extended = false,
+        .huff_bit_size = 4,
+        .filter_diff_size = 16,
+        .lz77_extended = true,
     };
     if (!encode_func(generated_uncompressed_data, compressed_data, BUFFER_SIZE,
                      &compressed_size, &params)) {

@@ -20,6 +20,7 @@ enum nsmbw_compress_type {
 
 struct nsmbw_compress_parameters {
   uint8_t huff_bit_size;
+  uint8_t filter_diff_size;
   bool lz77_extended;
 };
 
@@ -71,6 +72,10 @@ extern bool
 nsmbw_compress_lrc_decode(const uint8_t *src, uint8_t *dst, size_t src_length,
                           size_t *dst_length,
                           const struct nsmbw_compress_parameters *params);
+
+extern bool nsmbw_compress_filter_diff_encode(
+    const uint8_t *src, uint8_t *dst, size_t src_length, size_t *dst_length,
+    const struct nsmbw_compress_parameters *params);
 
 extern bool nsmbw_compress_filter_diff_decode(
     const uint8_t *src, uint8_t *dst, size_t src_length, size_t *dst_length,

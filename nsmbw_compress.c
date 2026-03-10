@@ -22,7 +22,7 @@ static const nsmbw_compress_function compress_functions[][2] = {
     [nsmbw_compress_type_lh] = {nsmbw_compress_lh_encode,
                                 nsmbw_compress_lh_decode},
     [nsmbw_compress_type_lrc] = {NULL, nsmbw_compress_lrc_decode},
-    [nsmbw_compress_type_filter_diff] = {NULL,
+    [nsmbw_compress_type_filter_diff] = {nsmbw_compress_filter_diff_encode,
                                          nsmbw_compress_filter_diff_decode},
     [nsmbw_compress_type_szs] = {nsmbw_compress_szs_encode,
                                  nsmbw_compress_szs_decode},
@@ -126,13 +126,23 @@ static const struct nsmbw_compress_argument arguments[] = {
 #define argument_index_old_lz77 5
     },
     {
+        .short_name = 'd',
+        .long_name = "diffsize",
+        .long_name_length = sizeof("diffsize") - 1,
+        .description = "Specify the size for filter-diff compression (8 or 16, "
+                       "default: 8)",
+        .type = nsmbw_compress_argument_type_int,
+        .index = 6,
+#define argument_index_diffsize 6
+    },
+    {
         .short_name = '\0',
         .long_name = "test",
         .long_name_length = sizeof("test") - 1,
         .description = "Run internal tests and exit",
         .type = nsmbw_compress_argument_type_bool,
-        .index = 6,
-#define argument_index_test 6
+        .index = 7,
+#define argument_index_test 7
     },
     {
         .short_name = 'v',
@@ -140,8 +150,8 @@ static const struct nsmbw_compress_argument arguments[] = {
         .long_name_length = sizeof("verbose") - 1,
         .description = "Print verbose output",
         .type = nsmbw_compress_argument_type_bool,
-        .index = 7,
-#define argument_index_verbose 7
+        .index = 8,
+#define argument_index_verbose 8
     },
 };
 
@@ -443,6 +453,7 @@ static bool get_uncompress_info(const void *input_data, size_t input_size,
     *compression_type = nsmbw_compress_type_lrc;
     break;
   case CX_COMPRESSION_TYPE_FILTER_DIFF:
+  case CX_COMPRESSION_TYPE_FILTER_DIFF | 0x1:
     *compression_type = nsmbw_compress_type_filter_diff;
     break;
   default:
@@ -633,6 +644,10 @@ static int main_compress(const void *input_file, size_t input_file_size,
       .huff_bit_size = argument_specified[argument_index_bitsize]
                            ? argument_values[argument_index_bitsize].int_value
                            : 8,
+      .filter_diff_size =
+          argument_specified[argument_index_diffsize]
+              ? argument_values[argument_index_diffsize].int_value
+              : 8,
   };
 
   size_t dst_length = 0;
