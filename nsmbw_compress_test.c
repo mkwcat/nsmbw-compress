@@ -62,6 +62,9 @@ static void run_compression_tests() {
       exit(EXIT_FAILURE);
     }
 
+    memset(decompressed_data, (*(uint8_t *)generated_uncompressed_data) ^ 0xFF,
+           BUFFER_SIZE);
+
     size_t decompressed_size = BUFFER_SIZE;
     if (!decode_func(compressed_data, decompressed_data, compressed_size,
                      &decompressed_size, &params)) {

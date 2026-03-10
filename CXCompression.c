@@ -16,42 +16,44 @@
  */
 
 struct LZTable {
-  unk2_t unsigned at_0x00; // size 0x02, offset 0x00
-  unk2_t unsigned at_0x02; // size 0x02, offset 0x02
-  unk2_t signed *at_0x04;  // size 0x04, offset 0x04
-  unk2_t signed *at_0x08;  // size 0x04, offset 0x08
-  unk2_t signed *at_0x0c;  // size 0x04, offset 0x0c
-  u32 windowSize;          // Added
-}; // size 0x10
+  unk2_t unsigned at_0x00;
+  unk2_t unsigned at_0x02;
+  unk2_t signed *at_0x04;
+  unk2_t signed *at_0x08;
+  unk2_t signed *at_0x0c;
+  u32 windowSize; // Added
+};
 
 struct at0 {
-  unk4_t unsigned count;   // size 0x04, offset 0x00
-  unk2_t unsigned at_0x04; // size 0x02, offset 0x04
-  unk2_t signed at_0x06;   // size 0x02, offset 0x06
-  unk2_t signed at_0x08;   // size 0x02, offset 0x08
-  unk2_t signed at_0x0a;   // size 0x02, offset 0x0a
-  unk2_t unsigned refSize; // size 0x02, offset 0x0c
-  unk2_t unsigned at_0x0e; // size 0x02, offset 0x0e
-  unk4_t ref;              // size 0x04, offset 0x10
-  unk1_t unsigned at_0x14; // size 0x01, offset 0x14
-  /* 1 byte padding */
-  u16 at_0x16; // size 0x02, offset 0x16
+  unk4_t unsigned count;
+  unk2_t unsigned at_0x04;
+  unk2_t signed at_0x06;
+  unk2_t signed at_0x08;
+  unk2_t signed at_0x0a;
+  unk2_t unsigned refSize;
+  unk2_t unsigned at_0x0e;
+  unk4_t ref;
+  unk1_t unsigned at_0x14;
+  u16 at_0x16;
 }; // size 0x18
 
+_Static_assert(sizeof(struct at0) == 0x18, "at0 size mismatch");
+
 struct at8 {
-  unk1_t unsigned at_0x00; // size 0x01, offset 0x00
-  unk1_t unsigned at_0x01; // size 0x01, offset 0x01
-  unk2_t unsigned at_0x02; // size 0x02, offset 0x02
-  unk2_t unsigned at_0x04; // size 0x02, offset 0x04
-}; // size 0x06
+  unk1_t unsigned at_0x00;
+  unk1_t unsigned at_0x01;
+  unk2_t unsigned at_0x02;
+  unk2_t unsigned at_0x04;
+};
+
+_Static_assert(sizeof(struct at8) == 0x06, "at8 size mismatch");
 
 struct HuffTable {
-  struct at0 *at_0x00; // size 0x04, offset 0x00
-  u16 *at_0x04;        // size 0x04, offset 0x04
-  struct at8 *at_0x08; // size 0x04, offset 0x08
-  u16 treeEntryCount;  // size 0x02, offset 0x0c
-                       /* 2 bytes padding */
-}; // size 0x10
+  struct at0 *at_0x00;
+  u16 *at_0x04;
+  struct at8 *at_0x08;
+  u16 treeEntryCount;
+};
 
 /*******************************************************************************
  * local function declarations
@@ -499,25 +501,27 @@ static void HuffInitTable(struct HuffTable *param_1, void *work,
                           u16 huffBitMax) {
   u32 i;
 
-  // TODO: clean up types here
-  param_1->at_0x00 = (struct at0 *)((size_t)work + 0);
-  param_1->at_0x04 = (u16 *)((size_t)work + huffBitMax * 0x30);
-  param_1->at_0x08 =
-      (struct at8 *)((size_t)param_1->at_0x04 + huffBitMax * (sizeof(u16) * 2));
+  size_t at0Size = sizeof(struct at0) * huffBitMax * 2;
+  size_t at4Size = sizeof(u16) * huffBitMax * 2;
+  u8 *workPtr = (u8 *)work;
+
+  param_1->at_0x00 = (struct at0 *)(workPtr + 0);
+  param_1->at_0x04 = (u16 *)(workPtr + at0Size);
+  param_1->at_0x08 = (struct at8 *)(workPtr + at0Size + at4Size);
   param_1->treeEntryCount = 1;
 
   { // random block
     struct at0 *a = param_1->at_0x00;
-    struct at0 initial = {.at_0x08 = -1, .at_0x0a = -1};
+    static const struct at0 initial = {.at_0x08 = -1, .at_0x0a = -1};
 
-    for (i = 0; i < huffBitMax << 1; ++i) {
+    for (i = 0; i < huffBitMax * 2; ++i) {
       a[i] = initial;
       a[i].at_0x04 = i;
     }
   }
 
   { // another random block
-    struct at8 initial = {.at_0x00 = 1, .at_0x01 = 1};
+    static const struct at8 initial = {.at_0x00 = 1, .at_0x01 = 1};
 
     u16 *b = param_1->at_0x04;
     struct at8 *c = param_1->at_0x08;
@@ -585,6 +589,10 @@ static u16 HuffConstructTree(struct at0 *param_1, unk_t unsigned huffBitMax) {
     }
 
     if (b < 0) {
+      if (a < 0) {
+        a = 0;
+        param_1[a].count = 1;
+      }
       if (c == huffBitMax) {
         param_1[c].count = param_1[a].count;
         param_1[c].at_0x08 = a;
@@ -647,6 +655,7 @@ static void HuffAddParentDepthToTable(struct at0 *param_1, u16 param_2,
 
 static void HuffAddCodeToTable(struct at0 *param_1, u16 param_2,
                                unk_t param_3) {
+  assert(param_2 != 0xFFFF);
   param_1[param_2].ref = param_3 << 1 | param_1[param_2].at_0x14;
 
   if (param_1[param_2].at_0x0e) {
