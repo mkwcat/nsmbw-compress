@@ -5,7 +5,7 @@
  * headers
  */
 
-#include "types.h"
+#include <stdint.h>
 
 /*******************************************************************************
  * functions
@@ -20,8 +20,8 @@ void CXUncompressAny(void const *compressed, void *uncompressed);
 void CXUncompressRL(void const *compressed, void *uncompressed);
 void CXUncompressLZ(void const *compressed, void *uncompressed);
 void CXUncompressHuffman(void const *compressed, void *uncompressed);
-void CXUncompressLH(void const *compressed, byte_t *uncompressed, u16 *);
-void CXUncompressLRC(void const *compressed, byte_t *uncompressed, unsigned *);
+void CXUncompressLH(void const *compressed, uint8_t *uncompressed, uint16_t *);
+void CXUncompressLRC(void const *compressed, uint8_t *uncompressed, unsigned *);
 void CXUnfilterDiff(void const *compressed, void *uncompressed);
 
 #ifdef __cplusplus

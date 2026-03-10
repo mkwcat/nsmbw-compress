@@ -6,36 +6,35 @@
 
 #include "CXInternal.h"
 #include "cx.h"
-#include "decomp.h" // unk_t
 #include "macros.h"
-#include "types.h"
 #include <assert.h>
+#include <stdint.h>
 
 /*******************************************************************************
  * types
  */
 
 struct BitReader {
-  byte_t const *data;   // size 0x04, offset 0x00
-  unk4_t byteOffset;          // size 0x04, offset 0x04
-  unk4_t unsigned at_0x08; // size 0x04, offset 0x08
-  unk4_t bit;          // size 0x04, offset 0x0c
+  uint8_t const *data;  // size 0x04, offset 0x00
+  int byteOffset;       // size 0x04, offset 0x04
+  int unsigned at_0x08; // size 0x04, offset 0x08
+  int bit;              // size 0x04, offset 0x0c
 }; // size 0x10?
 
 struct RCInfo {
-  unk4_t unsigned *at_0x00; // size 0x04, offset 0x00
-  unk4_t unsigned *at_0x04; // size 0x04, offset 0x04
-  unk4_t unsigned at_0x08;  // size 0x04, offset 0x08
-  unk1_t unsigned at_0x0c;  // size 0x04, offset 0x0c
+  int unsigned *at_0x00; // size 0x04, offset 0x00
+  int unsigned *at_0x04; // size 0x04, offset 0x04
+  int unsigned at_0x08;  // size 0x04, offset 0x08
+  uint8_t at_0x0c;       // size 0x04, offset 0x0c
 }; // size 0x10?
 
 struct RCState {
-  unk4_t at_0x00;          // size 0x04, offset 0x00
-  unk4_t unsigned at_0x04; // size 0x04, offset 0x04
-  unk4_t at_0x08;          // size 0x04, offset 0x08
-  unk1_t at_0x0c;          // size 0x04, offset 0x0c
-  byte_t pad0_[3];         // alignment?
-  unk4_t at_0x10;          // size 0x04, offset 0x10
+  int at_0x00;          // size 0x04, offset 0x00
+  int unsigned at_0x04; // size 0x04, offset 0x04
+  int at_0x08;          // size 0x04, offset 0x08
+  char at_0x0c;         // size 0x04, offset 0x0c
+  uint8_t pad0_[3];     // alignment?
+  int at_0x10;          // size 0x04, offset 0x10
 }; // size 0x14?
 
 /*******************************************************************************
@@ -44,30 +43,30 @@ struct RCState {
 
 static int CXGetCompressionType(void const *compressed);
 
-static unk_t CXiHuffImportTree(u16 *tree, byte_t const *stream, u8);
+static int CXiHuffImportTree(uint16_t *tree, uint8_t const *stream, uint8_t);
 
 // only reasonable way i see an init function come after a read function
 static inline void BitReader_Init(struct BitReader *bitReader,
-                                  byte_t const *stream);
-static byte_t BitReader_Read(struct BitReader *bitReader);
+                                  uint8_t const *stream);
+static uint8_t BitReader_Read(struct BitReader *bitReader);
 
-static inline void RCInitInfo_(struct RCInfo *rcInfo, unk1_t unsigned,
-                               unk4_t unsigned *);
+static inline void RCInitInfo_(struct RCInfo *rcInfo, uint8_t, int unsigned *);
 static inline void RCInitState_(struct RCState *rcState);
-static void RCAddCount_(struct RCInfo *rcInfo, u16);
-static u16 RCSearch_(struct RCInfo *rcInfo, unk_t, unk_t unsigned, unk_t);
-static u16 RCGetData_(byte_t const *stream, struct RCInfo *rcInfo,
-                      struct RCState *rcState, unk_t *);
+static void RCAddCount_(struct RCInfo *rcInfo, uint16_t);
+static uint16_t RCSearch_(struct RCInfo *rcInfo, int, unsigned, int);
+static uint16_t RCGetData_(uint8_t const *stream, struct RCInfo *rcInfo,
+                           struct RCState *rcState, int *);
 
 /*******************************************************************************
  * functions
  */
 
-u32 CXGetUncompressedSize(void const *compressed) {
-  u32 size = CXiConvertEndian32_(IN_BUFFER_AT(byte4_t, compressed, 0)) >> 8;
+uint32_t CXGetUncompressedSize(void const *compressed) {
+  uint32_t size =
+      CXiConvertEndian32_(IN_BUFFER_AT(uint32_t, compressed, 0)) >> 8;
 
   if (!size)
-    size = CXiConvertEndian32_(IN_BUFFER_AT(byte4_t, compressed, 4));
+    size = CXiConvertEndian32_(IN_BUFFER_AT(uint32_t, compressed, 4));
 
   return size;
 }
@@ -96,21 +95,21 @@ void CXUncompressAny(void const *compressed, void *uncompressed) {
 }
 
 void CXUncompressRL(void const *compressed, void *uncompressed) {
-  byte_t const *src = compressed;
-  byte_t *dst = uncompressed;
+  uint8_t const *src = compressed;
+  uint8_t *dst = uncompressed;
 
-  u32 size = CXiConvertEndian32_(IN_BUFFER_AT(byte4_t, src, 0)) >> 8;
-  src += sizeof(byte4_t);
+  uint32_t size = CXiConvertEndian32_(IN_BUFFER_AT(uint32_t, src, 0)) >> 8;
+  src += sizeof(uint32_t);
 
   if (!size) {
-    size = CXiConvertEndian32_(IN_BUFFER_AT(byte4_t, src, 0));
-    src += sizeof(byte4_t);
+    size = CXiConvertEndian32_(IN_BUFFER_AT(uint32_t, src, 0));
+    src += sizeof(uint32_t);
   }
 
   while (size) {
-    byte_t byte = *src++;
+    uint8_t byte = *src++;
 
-    u32 runLength = byte & 0x7f;
+    uint32_t runLength = byte & 0x7f;
 
     if (!(byte & 0x80)) {
       runLength += 1;
@@ -131,7 +130,7 @@ void CXUncompressRL(void const *compressed, void *uncompressed) {
 
       size -= runLength;
 
-      byte_t byte = *src++;
+      uint8_t byte = *src++;
 
       do
         *dst++ = byte;
@@ -141,28 +140,28 @@ void CXUncompressRL(void const *compressed, void *uncompressed) {
 }
 
 void CXUncompressLZ(void const *compressed, void *uncompressed) {
-  byte_t const *src = compressed;
-  byte_t *dst = uncompressed;
+  uint8_t const *src = compressed;
+  uint8_t *dst = uncompressed;
 
-  u32 size = CXiConvertEndian32_(IN_BUFFER_AT(byte4_t, src, 0)) >> 8;
-  BOOL stat = BOOLIFY_TERNARY(IN_BUFFER_AT(byte1_t, src, 0) & 0x0f);
-  src += sizeof(byte4_t);
+  uint32_t size = CXiConvertEndian32_(IN_BUFFER_AT(uint32_t, src, 0)) >> 8;
+  bool stat = BOOLIFY_TERNARY(IN_BUFFER_AT(uint8_t, src, 0) & 0x0f);
+  src += sizeof(uint32_t);
 
   if (!size) {
-    size = CXiConvertEndian32_(IN_BUFFER_AT(byte4_t, src, 0));
-    src += sizeof(byte4_t);
+    size = CXiConvertEndian32_(IN_BUFFER_AT(uint32_t, src, 0));
+    src += sizeof(uint32_t);
   }
 
   while (size) {
-    u32 i;
-    byte4_t flags = *src++;
+    uint32_t i;
+    uint32_t flags = *src++;
 
     for (i = 0; i < 8; ++i) {
       if (!(flags & 0x80)) {
         *dst++ = *src++;
         size--;
       } else {
-        s32 length = *src >> 4;
+        int32_t length = *src >> 4;
 
         if (!stat) {
           length += 3;
@@ -181,7 +180,7 @@ void CXUncompressLZ(void const *compressed, void *uncompressed) {
           }
         }
 
-        s32 offset = (*src++ & 0x0f) << 8;
+        int32_t offset = (*src++ & 0x0f) << 8;
         offset = (offset | *src++) + 1;
 
         if (length > size)
@@ -218,21 +217,21 @@ void CXUncompressLZ(void const *compressed, void *uncompressed) {
 }
 
 void CXUncompressHuffman(void const *compressed, void *uncompressed) {
-  byte_t const *src = compressed;
-  byte_t *dst = uncompressed;
+  uint8_t const *src = compressed;
+  uint8_t *dst = uncompressed;
 
-  s32 size = CXiConvertEndian32_(IN_BUFFER_AT(byte4_t, src, 0)) >> 8;
+  int32_t size = CXiConvertEndian32_(IN_BUFFER_AT(uint32_t, src, 0)) >> 8;
 
-  byte_t const *base = size ? src + 4 : src + 8;
-  byte_t const *basep1 = base + 1;
+  uint8_t const *base = size ? src + 4 : src + 8;
+  uint8_t const *basep1 = base + 1;
 
-  unk_t a = *src & 0x0f;
-  unk_t unsigned b = 0;
-  unk_t unsigned c = 0;
-  unk_t d = (a & 0x07) + 4;
+  int a = *src & 0x0f;
+  unsigned b = 0;
+  unsigned c = 0;
+  int d = (a & 0x07) + 4;
 
   if (!size)
-    size = CXiConvertEndian32_(IN_BUFFER_AT(byte4_t, src, 4));
+    size = CXiConvertEndian32_(IN_BUFFER_AT(uint32_t, src, 4));
 
   src = base + ((*base + 1) << 1);
   base = basep1;
@@ -240,23 +239,23 @@ void CXUncompressHuffman(void const *compressed, void *uncompressed) {
   while (size > 0) {
     int i = 32;
 
-    byte4_t f;
+    uint32_t f;
 #if defined(__MWERKS__)
     // NOTE: assignment to lvalue cast is a CW extension
-    f = CXiConvertEndian32_(*((byte4_t *)(src))++);
+    f = CXiConvertEndian32_(*((uint32_t *)(src))++);
 #else
-    f = CXiConvertEndian32_(IN_BUFFER_AT(byte4_t, src, 0));
-    src += sizeof(byte4_t);
+    f = CXiConvertEndian32_(IN_BUFFER_AT(uint32_t, src, 0));
+    src += sizeof(uint32_t);
 #endif
 
     while (--i >= 0) {
-      unk_t g = f >> 31;
-      unk_t h = *base;
+      int g = f >> 31;
+      int h = *base;
       h <<= g;
 
       // ok
-      base = (byte_t const *)((((size_t)(base) >> 1) << 1) +
-                              (((*base & 0x3f) + 1) << 1) + g);
+      base = (uint8_t const *)((((size_t)(base) >> 1) << 1) +
+                               (((*base & 0x3f) + 1) << 1) + g);
 
       if (h & 0x80) {
         b >>= a;
@@ -266,12 +265,12 @@ void CXUncompressHuffman(void const *compressed, void *uncompressed) {
         if (++c == d) {
 #if defined(__MWERKS__)
           // NOTE: assignment to lvalue cast is a CW extension
-          *((byte4_t *)(dst))++ = CXiConvertEndian32_(b);
+          *((uint32_t *)(dst))++ = CXiConvertEndian32_(b);
 #else
-          *(byte4_t *)dst = CXiConvertEndian32_(b);
-          dst += sizeof(byte4_t);
+          *(uint32_t *)dst = CXiConvertEndian32_(b);
+          dst += sizeof(uint32_t);
 #endif
-          size -= sizeof(byte4_t);
+          size -= sizeof(uint32_t);
           c = 0;
         }
       }
@@ -284,14 +283,15 @@ void CXUncompressHuffman(void const *compressed, void *uncompressed) {
   }
 }
 
-static unk_t CXiHuffImportTree(u16 *tree, byte_t const *stream, u8 bit_size) {
-  unk_t a;
-  unk_t b;
-  unk_t unsigned c;
-  unk_t unsigned d;
-  unk_t bit_size_mask;
-  unk_t unsigned f;
-  unk_t unsigned g;
+static int CXiHuffImportTree(uint16_t *tree, uint8_t const *stream,
+                             uint8_t bit_size) {
+  int a;
+  int b;
+  unsigned c;
+  unsigned d;
+  int bit_size_mask;
+  unsigned f;
+  unsigned g;
 
   a = 1;
   c = 0;
@@ -303,15 +303,15 @@ static unk_t CXiHuffImportTree(u16 *tree, byte_t const *stream, u8 bit_size) {
   g = (1 << bit_size) << 1;
 
   if (bit_size > 8) {
-    b = CXiConvertEndian16_(IN_BUFFER_AT(byte2_t, stream, 0));
+    b = CXiConvertEndian16_(IN_BUFFER_AT(uint16_t, stream, 0));
 
-    stream += sizeof(byte2_t);
-    f += sizeof(byte2_t);
+    stream += sizeof(uint16_t);
+    f += sizeof(uint16_t);
   } else {
-    b = IN_BUFFER_AT(byte1_t, stream, 0);
+    b = IN_BUFFER_AT(uint8_t, stream, 0);
 
-    stream += sizeof(byte1_t);
-    f += sizeof(byte1_t);
+    stream += sizeof(uint8_t);
+    f += sizeof(uint8_t);
   }
 
   b = (b + 1) << 2;
@@ -335,40 +335,40 @@ static unk_t CXiHuffImportTree(u16 *tree, byte_t const *stream, u8 bit_size) {
   return b;
 }
 
-static void BitReader_Init(struct BitReader *bitReader, byte_t const *stream) {
+static void BitReader_Init(struct BitReader *bitReader, uint8_t const *stream) {
   bitReader->data = stream;
   bitReader->byteOffset = 0;
   bitReader->at_0x08 = 0;
   bitReader->bit = 0;
 }
 
-static byte_t BitReader_Read(struct BitReader *bitReader) {
+static uint8_t BitReader_Read(struct BitReader *bitReader) {
   if (!bitReader->bit) {
     bitReader->at_0x08 = bitReader->data[bitReader->byteOffset++];
     bitReader->bit = 8;
   }
 
-  byte_t a = (bitReader->at_0x08 >> (bitReader->bit - 1)) & 0x01;
+  uint8_t a = (bitReader->at_0x08 >> (bitReader->bit - 1)) & 0x01;
   --bitReader->bit;
 
   return a;
 }
 
-void CXUncompressLH(void const *compressed, byte_t *uncompressed,
-                    u16 *param_3) {
-  u32 size;
-  unk_t a = 0;
-  byte_t const *src = compressed;
-  u16 *ltree = param_3;
-  u16 *rtree = param_3 + 0x400;
+void CXUncompressLH(void const *compressed, uint8_t *uncompressed,
+                    uint16_t *param_3) {
+  uint32_t size;
+  int a = 0;
+  uint8_t const *src = compressed;
+  uint16_t *ltree = param_3;
+  uint16_t *rtree = param_3 + 0x400;
 
   // size
-  size = CXiConvertEndian32_(IN_BUFFER_AT(byte4_t, src, 0)) >> 8;
-  src += sizeof(byte4_t);
+  size = CXiConvertEndian32_(IN_BUFFER_AT(uint32_t, src, 0)) >> 8;
+  src += sizeof(uint32_t);
 
   if (!size) {
-    size = CXiConvertEndian32_(IN_BUFFER_AT(byte4_t, src, 0));
-    src += sizeof(byte4_t);
+    size = CXiConvertEndian32_(IN_BUFFER_AT(uint32_t, src, 0));
+    src += sizeof(uint32_t);
   }
 
   src += CXiHuffImportTree(ltree, src, 9);
@@ -378,12 +378,12 @@ void CXUncompressLH(void const *compressed, byte_t *uncompressed,
   BitReader_Init(&bitReader, src);
 
   while (a < size) {
-    u16 d;
-    u16 *e = ltree + 1;
+    uint16_t d;
+    uint16_t *e = ltree + 1;
 
     while (true) {
-      byte_t f = BitReader_Read(&bitReader);
-      unk_t g = (((*e & 0x7f) + 1) << 1) + f;
+      uint8_t f = BitReader_Read(&bitReader);
+      int g = (((*e & 0x7f) + 1) << 1) + f;
 
       if (*e & (0x100 >> f)) {
         e = ROUND_DOWN_PTR(e, 4);
@@ -400,13 +400,13 @@ void CXUncompressLH(void const *compressed, byte_t *uncompressed,
       continue;
     }
 
-    u16 h;
-    u16 j = (d & 0xff) + 3;
-    u16 *rtree_val = rtree + 1;
+    uint16_t h;
+    uint16_t j = (d & 0xff) + 3;
+    uint16_t *rtree_val = rtree + 1;
 
     while (true) {
-      byte_t l = BitReader_Read(&bitReader);
-      u32 m = (((*rtree_val & 0x07) + 1) << 1) + l;
+      uint8_t l = BitReader_Read(&bitReader);
+      uint32_t m = (((*rtree_val & 0x07) + 1) << 1) + l;
 
       if (*rtree_val & (0x10 >> l)) {
         rtree_val = ROUND_DOWN_PTR(rtree_val, 4);
@@ -446,10 +446,10 @@ void CXUncompressLH(void const *compressed, byte_t *uncompressed,
   }
 }
 
-static void RCInitInfo_(struct RCInfo *rcInfo, unk1_t unsigned param_2,
-                        unk4_t unsigned *param_3) {
-  u32 i;
-  unk_t a = 1 << param_2;
+static void RCInitInfo_(struct RCInfo *rcInfo, uint8_t param_2,
+                        int unsigned *param_3) {
+  uint32_t i;
+  int a = 1 << param_2;
 
   rcInfo->at_0x0c = param_2;
   rcInfo->at_0x00 = param_3;
@@ -471,9 +471,9 @@ static void RCInitState_(struct RCState *rcState) {
   rcState->at_0x10 = 0;
 }
 
-static void RCAddCount_(struct RCInfo *rcInfo, u16 param_2) {
-  u32 i;
-  unk_t unsigned a = 1 << rcInfo->at_0x0c;
+static void RCAddCount_(struct RCInfo *rcInfo, uint16_t param_2) {
+  uint32_t i;
+  unsigned a = 1 << rcInfo->at_0x0c;
 
   ++rcInfo->at_0x00[param_2];
   ++rcInfo->at_0x08;
@@ -499,16 +499,16 @@ static void RCAddCount_(struct RCInfo *rcInfo, u16 param_2) {
   }
 }
 
-static u16 RCSearch_(struct RCInfo *rcInfo, unk_t param_2,
-                     unk_t unsigned param_3, unk_t param_4) {
-  unk_t a = 1 << rcInfo->at_0x0c;
-  unk_t b = param_2 - param_4;
-  unk_t unsigned c = param_3 / rcInfo->at_0x08;
-  unk_t unsigned d = b / c;
-  unk_t unsigned e = 0;
-  unk_t f = a - 1;
+static uint16_t RCSearch_(struct RCInfo *rcInfo, int param_2, unsigned param_3,
+                          int param_4) {
+  int a = 1 << rcInfo->at_0x0c;
+  int b = param_2 - param_4;
+  unsigned c = param_3 / rcInfo->at_0x08;
+  unsigned d = b / c;
+  unsigned e = 0;
+  int f = a - 1;
 
-  unk_t g;
+  int g;
   while (e < f) {
     g = (e + f) >> 1;
 
@@ -525,15 +525,15 @@ static u16 RCSearch_(struct RCInfo *rcInfo, unk_t param_2,
   return g;
 }
 
-static u16 RCGetData_(byte_t const *stream, struct RCInfo *rcInfo,
-                      struct RCState *rcState, unk_t *param_4) {
-  u16 a =
+static uint16_t RCGetData_(uint8_t const *stream, struct RCInfo *rcInfo,
+                           struct RCState *rcState, int *param_4) {
+  uint16_t a =
       RCSearch_(rcInfo, rcState->at_0x08, rcState->at_0x04, rcState->at_0x00);
-  unk_t b = 0;
+  int b = 0;
 
   // arbitrary block
   {
-    unk_t c = rcState->at_0x04 / rcInfo->at_0x08;
+    int c = rcState->at_0x04 / rcInfo->at_0x08;
 
     rcState->at_0x00 += c * rcInfo->at_0x04[a];
     rcState->at_0x04 = c * rcInfo->at_0x00[a];
@@ -552,11 +552,11 @@ static u16 RCGetData_(byte_t const *stream, struct RCInfo *rcInfo,
   return a;
 }
 
-void CXUncompressLRC(void const *compressed, byte_t *uncompressed,
-                     unk_t unsigned *param_3) {
-  byte_t const *src = compressed;
-  unk_t unsigned a = 0;
-  u32 size = 0;
+void CXUncompressLRC(void const *compressed, uint8_t *uncompressed,
+                     unsigned *param_3) {
+  uint8_t const *src = compressed;
+  unsigned a = 0;
+  uint32_t size = 0;
 
   struct RCInfo info1;
   RCInitInfo_(&info1, 9, param_3);
@@ -572,23 +572,23 @@ void CXUncompressLRC(void const *compressed, byte_t *uncompressed,
   RCInitState_(&state);
 
   // size
-  size = CXiConvertEndian32_(IN_BUFFER_AT(byte4_t, src, 0)) >> 8;
-  src += sizeof(byte4_t);
+  size = CXiConvertEndian32_(IN_BUFFER_AT(uint32_t, src, 0)) >> 8;
+  src += sizeof(uint32_t);
 
   if (!size) {
-    size = CXiConvertEndian32_(IN_BUFFER_AT(byte4_t, src, 0));
-    src += sizeof(byte4_t);
+    size = CXiConvertEndian32_(IN_BUFFER_AT(uint32_t, src, 0));
+    src += sizeof(uint32_t);
   }
 
   // What
   state.at_0x08 = src[0] << 24 | src[1] << 16 | src[2] << 8 | src[3];
-  src += sizeof(byte_t) * 4;
+  src += sizeof(uint8_t) * 4;
 
   while (a < size) {
-    unk_t b;
+    int b;
 
     // why is recast necessary?
-    u16 c = (u16)RCGetData_(src, &info1, &state, &b);
+    uint16_t c = (uint16_t)RCGetData_(src, &info1, &state, &b);
     src += b;
 
     if (c < 0x100) {
@@ -596,7 +596,7 @@ void CXUncompressLRC(void const *compressed, byte_t *uncompressed,
       continue;
     }
 
-    u16 d = (c & 0xff) + 3;
+    uint16_t d = (c & 0xff) + 3;
 
     c = RCGetData_(src, &info2, &state, &b) + 1;
     src += b;
@@ -615,46 +615,46 @@ void CXUncompressLRC(void const *compressed, byte_t *uncompressed,
 }
 
 void CXUnfilterDiff(void const *compressed, void *uncompressed) {
-  byte_t const *src = compressed;
-  byte_t *dst = uncompressed;
+  uint8_t const *src = compressed;
+  uint8_t *dst = uncompressed;
 
-  u32 stat = IN_BUFFER_AT(byte1_t, src, 0) & 0x0f;
-  s32 size = CXiConvertEndian32_(IN_BUFFER_AT(byte4_t, src, 0)) >> 8;
-  u32 sum = 0;
+  uint32_t stat = IN_BUFFER_AT(uint8_t, src, 0) & 0x0f;
+  int32_t size = CXiConvertEndian32_(IN_BUFFER_AT(uint32_t, src, 0)) >> 8;
+  uint32_t sum = 0;
 
-  src += sizeof(u32);
+  src += sizeof(uint32_t);
 
   if (stat != 0x01) {
     do {
-      byte1_t num = *src++;
+      uint8_t num = *src++;
 
-      size -= sizeof(byte1_t);
+      size -= sizeof(uint8_t);
       sum += num;
 
       *dst++ = sum;
     } while (size > 0);
   } else {
     do {
-      byte2_t num = CXiConvertEndian16_(*(byte2_t *)src);
-      src += sizeof(byte2_t);
+      uint16_t num = CXiConvertEndian16_(*(uint16_t *)src);
+      src += sizeof(uint16_t);
 
-      size -= sizeof(byte2_t);
+      size -= sizeof(uint16_t);
       sum += num;
 
-      *(byte2_t *)dst = CXiConvertEndian16_(sum);
-      dst += sizeof(byte2_t);
+      *(uint16_t *)dst = CXiConvertEndian16_(sum);
+      dst += sizeof(uint16_t);
     } while (size > 0);
   }
 }
 
 CXCompressionHeader CXGetCompressionHeader(void const *compressed) {
   CXCompressionHeader header;
-  header.type = (IN_BUFFER_AT(byte1_t, compressed, 0) & 0xf0) >> 4;
-  header.stat = (IN_BUFFER_AT(byte1_t, compressed, 0) & 0x0f);
-  header.size = CXiConvertEndian32_(IN_BUFFER_AT(byte4_t, compressed, 0)) >> 8;
+  header.type = (IN_BUFFER_AT(uint8_t, compressed, 0) & 0xf0) >> 4;
+  header.stat = (IN_BUFFER_AT(uint8_t, compressed, 0) & 0x0f);
+  header.size = CXiConvertEndian32_(IN_BUFFER_AT(uint32_t, compressed, 0)) >> 8;
 
   if (!header.size) {
-    header.size = CXiConvertEndian32_(IN_BUFFER_AT(byte4_t, compressed, 4));
+    header.size = CXiConvertEndian32_(IN_BUFFER_AT(uint32_t, compressed, 4));
   }
 
   return header;

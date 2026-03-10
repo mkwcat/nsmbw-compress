@@ -5,7 +5,7 @@
  * headers
  */
 
-#include "types.h"
+#include <stdint.h>
 
 /*******************************************************************************
  * types
@@ -15,7 +15,7 @@
 extern "C" {
 #endif
 
-typedef s32 CXSecureResult;
+typedef int32_t CXSecureResult;
 enum CXSecureResult_et {
   CX_SECURE_ERR_OK = 0,
   CX_SECURE_ERR_BAD_FILE_TYPE = -1,
@@ -37,21 +37,21 @@ enum CXSecureResult_et {
  * functions
  */
 
-CXSecureResult CXSecureUncompressAny(void const *compressed, u32 length,
+CXSecureResult CXSecureUncompressAny(void const *compressed, uint32_t length,
                                      void *uncompressed);
 
-CXSecureResult CXSecureUncompressRL(void const *compressed, u32 length,
+CXSecureResult CXSecureUncompressRL(void const *compressed, uint32_t length,
                                     void *uncompressed);
-CXSecureResult CXSecureUncompressLZ(void const *compressed, u32 length,
+CXSecureResult CXSecureUncompressLZ(void const *compressed, uint32_t length,
                                     void *uncompressed);
-CXSecureResult CXSecureUncompressHuffman(void const *compressed, u32 length,
-                                         void *uncompressed);
-CXSecureResult CXSecureUnfilterDiff(void const *compressed, u32 length,
+CXSecureResult CXSecureUncompressHuffman(void const *compressed,
+                                         uint32_t length, void *uncompressed);
+CXSecureResult CXSecureUnfilterDiff(void const *compressed, uint32_t length,
                                     void *uncompressed);
-CXSecureResult CXSecureUncompressLH(void const *compressed, u32 length,
-                                    byte_t *uncompressed, u16 *);
-CXSecureResult CXSecureUncompressLRC(void const *compressed, u32 length,
-                                     byte_t *uncompressed, unsigned *);
+CXSecureResult CXSecureUncompressLH(void const *compressed, uint32_t length,
+                                    uint8_t *uncompressed, uint16_t *);
+CXSecureResult CXSecureUncompressLRC(void const *compressed, uint32_t length,
+                                     uint8_t *uncompressed, unsigned *);
 
 // Sizes assumed based on EGG::StreamDecomp
 #define CX_SECURE_UNCOMPRESS_LH_WORK_SIZE 0x8B0

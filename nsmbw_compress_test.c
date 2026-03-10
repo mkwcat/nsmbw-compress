@@ -1,7 +1,6 @@
 #include "nsmbw_compress.h"
-#include "nsmbw_compress_internal.h"
-#include "types.h"
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,8 +14,8 @@ static const nsmbw_compress_function compress_functions[][2] = {
                                 nsmbw_compress_rl_decode},
     [nsmbw_compress_type_lh] = {nsmbw_compress_lh_encode,
                                 nsmbw_compress_lh_decode},
-    [nsmbw_compress_type_lrc] = {nullptr, nsmbw_compress_lrc_decode},
-    [nsmbw_compress_type_filter_diff] = {nullptr,
+    [nsmbw_compress_type_lrc] = {NULL, nsmbw_compress_lrc_decode},
+    [nsmbw_compress_type_filter_diff] = {NULL,
                                          nsmbw_compress_filter_diff_decode},
     [nsmbw_compress_type_szs] = {nsmbw_compress_szs_encode,
                                  nsmbw_compress_szs_decode},
@@ -45,7 +44,7 @@ static void run_compression_tests() {
     const nsmbw_compress_function encode_func = compress_functions[i][0];
     const nsmbw_compress_function decode_func = compress_functions[i][1];
 
-    if (encode_func == nullptr || decode_func == nullptr) {
+    if (encode_func == NULL || decode_func == NULL) {
       continue;
     }
 

@@ -6,98 +6,99 @@
 
 #include "CXInternal.h"
 #include "cx.h"
-#include "decomp.h"
 #include "macros.h"
-#include "types.h"
 #include <assert.h>
+#include <stdint.h>
 
 /*******************************************************************************
  * types
  */
 
 struct LZTable {
-  unk2_t unsigned at_0x00;
-  unk2_t unsigned at_0x02;
-  unk2_t signed *at_0x04;
-  unk2_t signed *at_0x08;
-  unk2_t signed *at_0x0c;
-  u32 windowSize; // Added
+  uint16_t at_0x00;
+  uint16_t at_0x02;
+  short *at_0x04;
+  short *at_0x08;
+  short *at_0x0c;
+  uint32_t windowSize; // Added
 };
 
 struct at0 {
-  unk4_t unsigned count;
-  unk2_t unsigned at_0x04;
-  unk2_t signed at_0x06;
-  unk2_t signed at_0x08;
-  unk2_t signed at_0x0a;
-  unk2_t unsigned refSize;
-  unk2_t unsigned at_0x0e;
-  unk4_t ref;
-  unk1_t unsigned at_0x14;
-  u16 at_0x16;
+  int unsigned count;
+  uint16_t at_0x04;
+  short at_0x06;
+  short at_0x08;
+  short at_0x0a;
+  uint16_t refSize;
+  uint16_t at_0x0e;
+  int ref;
+  uint8_t at_0x14;
+  uint16_t at_0x16;
 }; // size 0x18
 
 _Static_assert(sizeof(struct at0) == 0x18, "at0 size mismatch");
 
 struct at8 {
-  unk1_t unsigned at_0x00;
-  unk1_t unsigned at_0x01;
-  unk2_t unsigned at_0x02;
-  unk2_t unsigned at_0x04;
+  uint8_t at_0x00;
+  uint8_t at_0x01;
+  uint16_t at_0x02;
+  uint16_t at_0x04;
 };
 
 _Static_assert(sizeof(struct at8) == 0x06, "at8 size mismatch");
 
 struct HuffTable {
   struct at0 *at_0x00;
-  u16 *at_0x04;
+  uint16_t *at_0x04;
   struct at8 *at_0x08;
-  u16 treeEntryCount;
+  uint16_t treeEntryCount;
 };
 
 /*******************************************************************************
  * local function declarations
  */
 
-static unk_t SearchLZ(struct LZTable const *table, byte_t const *data, u32,
-                      unk2_t unsigned *, unk4_t);
-static void LZInitTable(struct LZTable *table, unk2_t *work, u32 windowSize);
-static void SlideByte(struct LZTable *table, byte_t const *data);
-static void LZSlide(struct LZTable *table, byte_t const *data, u32 length);
+static int SearchLZ(struct LZTable const *table, uint8_t const *data, uint32_t,
+                    uint16_t *, int);
+static void LZInitTable(struct LZTable *table, short *work,
+                        uint32_t windowSize);
+static void SlideByte(struct LZTable *table, uint8_t const *data);
+static void LZSlide(struct LZTable *table, uint8_t const *data,
+                    uint32_t length);
 
-static void HuffInitTable(struct HuffTable *, void *work, u16);
+static void HuffInitTable(struct HuffTable *, void *work, uint16_t);
 
-static void HuffCountData(struct at0 *, byte_t const *data, u32 size,
-                          u8 huffBitSize);
-static u16 HuffConstructTree(struct at0 *, unk_t unsigned);
-static void HuffAddParentDepthToTable(struct at0 *, u16, u16);
-static void HuffAddCodeToTable(struct at0 *, u16, unk_t);
-static u16 HuffAddCountHWordToTable(struct at0 *, u16);
-static void HuffMakeHuffTree(struct HuffTable *, unk2_t unsigned,
-                             u8 huffBitSize);
-static void HuffMakeSubsetHuffTree(struct HuffTable *, u16, u8);
-static u8 HuffRemainingNodeCanSetOffset(struct HuffTable *, s16,
-                                        int huffBitSize);
-static void HuffSetOneNodeOffset(struct HuffTable *, u16, u8);
-static u32 HuffConvertData(struct at0 *, byte_t const *srcp, byte_t *dstp,
-                           u32 size, u32 maxLength, u8 huffBitSize);
+static void HuffCountData(struct at0 *, uint8_t const *data, uint32_t size,
+                          uint8_t huffBitSize);
+static uint16_t HuffConstructTree(struct at0 *, unsigned);
+static void HuffAddParentDepthToTable(struct at0 *, uint16_t, uint16_t);
+static void HuffAddCodeToTable(struct at0 *, uint16_t, int);
+static uint16_t HuffAddCountHWordToTable(struct at0 *, uint16_t);
+static void HuffMakeHuffTree(struct HuffTable *, uint16_t, uint8_t huffBitSize);
+static void HuffMakeSubsetHuffTree(struct HuffTable *, uint16_t, uint8_t);
+static uint8_t HuffRemainingNodeCanSetOffset(struct HuffTable *, short,
+                                             int huffBitSize);
+static void HuffSetOneNodeOffset(struct HuffTable *, uint16_t, uint8_t);
+static uint32_t HuffConvertData(struct at0 *, uint8_t const *srcp,
+                                uint8_t *dstp, uint32_t size,
+                                uint32_t maxLength, uint8_t huffBitSize);
 
 /*******************************************************************************
  * functions
  */
 
-u32 CXCompressLZImpl(byte_t const *srcp, u32 size, byte_t *dstp, void *work,
-                     BOOL param_5) {
-  u32 length;
-  u32 a;
-  byte_t b;
-  u16 c;
-  byte_t *d;
+uint32_t CXCompressLZImpl(uint8_t const *srcp, uint32_t size, uint8_t *dstp,
+                          void *work, bool param_5) {
+  uint32_t length;
+  uint32_t a;
+  uint8_t b;
+  uint16_t c;
+  uint8_t *d;
 
-  u8 i;
+  uint8_t i;
 
-  u32 f;
-  unk4_t long g; // or unsigned
+  uint32_t f;
+  int long g; // or unsigned
 
   g = param_5 ? 0x10110 : 0x12;
 
@@ -106,21 +107,21 @@ u32 CXCompressLZImpl(byte_t const *srcp, u32 size, byte_t *dstp, void *work,
   assert(size > 4);
 
   if (size < 0x1000000) {
-    *(byte4_t *)dstp = CXiConvertEndian32_(
+    *(uint32_t *)dstp = CXiConvertEndian32_(
         size << 8 | CX_COMPRESSION_TYPE_LEMPEL_ZIV | BOOLIFY_TERNARY(param_5));
 
-    dstp += sizeof(byte4_t);
+    dstp += sizeof(uint32_t);
 
-    length = sizeof(byte4_t);
+    length = sizeof(uint32_t);
   } else {
-    *(byte4_t *)dstp = CXiConvertEndian32_(CX_COMPRESSION_TYPE_LEMPEL_ZIV |
-                                           BOOLIFY_TERNARY(param_5));
-    dstp += sizeof(byte4_t);
+    *(uint32_t *)dstp = CXiConvertEndian32_(CX_COMPRESSION_TYPE_LEMPEL_ZIV |
+                                            BOOLIFY_TERNARY(param_5));
+    dstp += sizeof(uint32_t);
 
-    *(byte4_t *)dstp = CXiConvertEndian32_(size);
-    dstp += sizeof(byte4_t);
+    *(uint32_t *)dstp = CXiConvertEndian32_(size);
+    dstp += sizeof(uint32_t);
 
-    length = sizeof(byte4_t) + sizeof(byte4_t);
+    length = sizeof(uint32_t) + sizeof(uint32_t);
   }
 
   f = size * CX_COMPRESS_DST_SCALE;
@@ -146,7 +147,7 @@ u32 CXCompressLZImpl(byte_t const *srcp, u32 size, byte_t *dstp, void *work,
         if (length + 2 >= f)
           return 0;
 
-        u32 h;
+        uint32_t h;
 
         if (param_5) {
           if (a >= 0x111) {
@@ -198,18 +199,18 @@ u32 CXCompressLZImpl(byte_t const *srcp, u32 size, byte_t *dstp, void *work,
   return length;
 }
 
-static unk_t SearchLZ(struct LZTable const *table, byte_t const *data,
-                      u32 param_3, unk2_t unsigned *param_4, unk4_t param_5) {
-  byte_t const *a;
-  byte_t const *b;
-  byte_t const *c;
-  unk2_t unsigned d;
-  unk2_t unsigned e;
-  unk_t unsigned f;
-  unk2_t signed *g;
-  unk2_t unsigned h;
-  unk_t l;
-  unk_t unsigned m;
+static int SearchLZ(struct LZTable const *table, uint8_t const *data,
+                    uint32_t param_3, uint16_t *param_4, int param_5) {
+  uint8_t const *a;
+  uint8_t const *b;
+  uint8_t const *c;
+  uint16_t d;
+  uint16_t e;
+  unsigned f;
+  short *g;
+  uint16_t h;
+  int l;
+  unsigned m;
 
   m = 2;
   g = table->at_0x04;
@@ -266,12 +267,13 @@ static unk_t SearchLZ(struct LZTable const *table, byte_t const *data,
   return m;
 }
 
-static void LZInitTable(struct LZTable *table, unk2_t *work, u32 windowSize) {
+static void LZInitTable(struct LZTable *table, short *work,
+                        uint32_t windowSize) {
   table->at_0x04 = work;
   table->at_0x08 = work + windowSize;
   table->at_0x0c = work + windowSize + 0x100;
 
-  u16 i;
+  uint16_t i;
   for (i = 0; i < 0x100; ++i) {
     table->at_0x08[i] = -1;
     table->at_0x0c[i] = -1;
@@ -282,26 +284,26 @@ static void LZInitTable(struct LZTable *table, unk2_t *work, u32 windowSize) {
   table->windowSize = windowSize;
 }
 
-static void SlideByte(struct LZTable *table, byte_t const *data) {
-  unk1_t unsigned a;
-  unk2_t unsigned b;
-  unk2_t c;
-  unk2_t *d_at8;
-  unk2_t *d_at4;
-  unk2_t *d_atc;
+static void SlideByte(struct LZTable *table, uint8_t const *data) {
+  uint8_t a;
+  uint16_t b;
+  short c;
+  short *d_at8;
+  short *d_at4;
+  short *d_atc;
 
   a = *data;
   d_at8 = table->at_0x08;
   d_at4 = table->at_0x04;
   d_atc = table->at_0x0c;
 
-  unk2_t unsigned const g = table->at_0x00;
-  unk2_t unsigned const h = table->at_0x02;
+  uint16_t const g = table->at_0x00;
+  uint16_t const h = table->at_0x02;
 
-  s32 const windowSize = table->windowSize;
+  const int windowSize = table->windowSize;
 
   if (h == windowSize) {
-    unk1_t unsigned i = data[-windowSize];
+    uint8_t i = data[-windowSize];
 
     if ((d_at8[i] = d_at4[d_at8[i]]) == -1)
       d_atc[i] = -1;
@@ -327,36 +329,37 @@ static void SlideByte(struct LZTable *table, byte_t const *data) {
     ++table->at_0x02;
 }
 
-static void LZSlide(struct LZTable *table, byte_t const *data, u32 length) {
+static void LZSlide(struct LZTable *table, uint8_t const *data,
+                    uint32_t length) {
   int i;
   for (i = 0; i < length; ++i)
     SlideByte(table, data++);
 }
 
-u32 CXCompressRL(byte_t const *srcp, u32 size, byte_t *dstp) {
-  unk_t unsigned a;
-  unk_t unsigned b;
-  unk_t c;
-  unk1_t unsigned d;
-  unk1_t unsigned e;
-  unk1_t unsigned f;
-  byte_t const *g;
+uint32_t CXCompressRL(uint8_t const *srcp, uint32_t size, uint8_t *dstp) {
+  unsigned a;
+  unsigned b;
+  int c;
+  uint8_t d;
+  uint8_t e;
+  uint8_t f;
+  uint8_t const *g;
 
   assert(srcp != NULL);
   assert(dstp != NULL);
   assert(size > 4);
 
   if (size < 0x1000000) {
-    IN_BUFFER_AT(byte4_t, dstp, 0) =
+    IN_BUFFER_AT(uint32_t, dstp, 0) =
         CXiConvertEndian32_(size << 8 | CX_COMPRESSION_TYPE_RUN_LENGTH);
 
-    b = sizeof(byte4_t);
+    b = sizeof(uint32_t);
   } else {
-    IN_BUFFER_AT(byte4_t, dstp, 0) =
+    IN_BUFFER_AT(uint32_t, dstp, 0) =
         CXiConvertEndian32_(CX_COMPRESSION_TYPE_RUN_LENGTH);
-    IN_BUFFER_AT(byte4_t, dstp, 4) = CXiConvertEndian32_(size);
+    IN_BUFFER_AT(uint32_t, dstp, 4) = CXiConvertEndian32_(size);
 
-    b = sizeof(byte4_t) + sizeof(byte4_t);
+    b = sizeof(uint32_t) + sizeof(uint32_t);
   }
 
   c = 0;
@@ -427,12 +430,12 @@ u32 CXCompressRL(byte_t const *srcp, u32 size, byte_t *dstp) {
   return b;
 }
 
-u32 CXCompressHuffman(byte_t const *srcp, u32 size, byte_t *dstp,
-                      u8 huffBitSize, void *work) {
+uint32_t CXCompressHuffman(uint8_t const *srcp, uint32_t size, uint8_t *dstp,
+                           uint8_t huffBitSize, void *work) {
   int i;
 
-  u16 a;
-  unk2_t unsigned b = 1 << huffBitSize;
+  uint16_t a;
+  uint16_t b = 1 << huffBitSize;
 
   assert(srcp != NULL);
   assert(dstp != NULL);
@@ -450,28 +453,28 @@ u32 CXCompressHuffman(byte_t const *srcp, u32 size, byte_t *dstp,
 
   *table.at_0x04 = --table.treeEntryCount;
 
-  u32 headerLength;
+  uint32_t headerLength;
   if (size < 0x1000000) {
-    IN_BUFFER_AT(byte4_t, dstp, 0) = CXiConvertEndian32_(
+    IN_BUFFER_AT(uint32_t, dstp, 0) = CXiConvertEndian32_(
         size << 8 | CX_COMPRESSION_TYPE_HUFFMAN | huffBitSize);
 
-    headerLength = sizeof(byte4_t);
+    headerLength = sizeof(uint32_t);
   } else {
-    IN_BUFFER_AT(byte4_t, dstp, 0) =
+    IN_BUFFER_AT(uint32_t, dstp, 0) =
         CXiConvertEndian32_(CX_COMPRESSION_TYPE_HUFFMAN | huffBitSize);
-    IN_BUFFER_AT(byte4_t, dstp, 4) = CXiConvertEndian32_(size);
+    IN_BUFFER_AT(uint32_t, dstp, 4) = CXiConvertEndian32_(size);
 
-    headerLength = sizeof(byte4_t) + sizeof(byte4_t);
+    headerLength = sizeof(uint32_t) + sizeof(uint32_t);
   }
 
-  u32 length = headerLength;
+  uint32_t length = headerLength;
 
   if (length + ((table.treeEntryCount + 1) << 1) >=
       size * CX_COMPRESS_DST_SCALE)
     return 0;
 
-  for (i = 0; i < (u16)((table.treeEntryCount + 1) << 1); ++i) {
-    u8 c = (table.at_0x04[i] & 0xC000) >> 8;
+  for (i = 0; i < (uint16_t)((table.treeEntryCount + 1) << 1); ++i) {
+    uint8_t c = (table.at_0x04[i] & 0xC000) >> 8;
     dstp[length++] = table.at_0x04[i] | c;
   }
 
@@ -485,9 +488,8 @@ u32 CXCompressHuffman(byte_t const *srcp, u32 size, byte_t *dstp,
   }
 
   { // random block
-    unk_t c =
-        HuffConvertData(table.at_0x00, srcp, dstp + length, size,
-                        size * CX_COMPRESS_DST_SCALE - length, huffBitSize);
+    int c = HuffConvertData(table.at_0x00, srcp, dstp + length, size,
+                            size * CX_COMPRESS_DST_SCALE - length, huffBitSize);
     if (!c)
       return 0;
 
@@ -498,15 +500,15 @@ u32 CXCompressHuffman(byte_t const *srcp, u32 size, byte_t *dstp,
 }
 
 static void HuffInitTable(struct HuffTable *param_1, void *work,
-                          u16 huffBitMax) {
-  u32 i;
+                          uint16_t huffBitMax) {
+  uint32_t i;
 
   size_t at0Size = sizeof(struct at0) * huffBitMax * 2;
-  size_t at4Size = sizeof(u16) * huffBitMax * 2;
-  u8 *workPtr = (u8 *)work;
+  size_t at4Size = sizeof(uint16_t) * huffBitMax * 2;
+  uint8_t *workPtr = (uint8_t *)work;
 
   param_1->at_0x00 = (struct at0 *)(workPtr + 0);
-  param_1->at_0x04 = (u16 *)(workPtr + at0Size);
+  param_1->at_0x04 = (uint16_t *)(workPtr + at0Size);
   param_1->at_0x08 = (struct at8 *)(workPtr + at0Size + at4Size);
   param_1->treeEntryCount = 1;
 
@@ -523,7 +525,7 @@ static void HuffInitTable(struct HuffTable *param_1, void *work,
   { // another random block
     static const struct at8 initial = {.at_0x00 = 1, .at_0x01 = 1};
 
-    u16 *b = param_1->at_0x04;
+    uint16_t *b = param_1->at_0x04;
     struct at8 *c = param_1->at_0x08;
 
     for (i = 0; i < huffBitMax; ++i) {
@@ -535,11 +537,11 @@ static void HuffInitTable(struct HuffTable *param_1, void *work,
   }
 }
 
-static void HuffCountData(struct at0 *param_1, byte_t const *data, u32 size,
-                          u8 huffBitSize) {
-  u32 i;
+static void HuffCountData(struct at0 *param_1, uint8_t const *data,
+                          uint32_t size, uint8_t huffBitSize) {
+  uint32_t i;
 
-  byte_t a;
+  uint8_t a;
 
   if (huffBitSize == 8) {
     for (i = 0; i < size; ++i)
@@ -556,18 +558,18 @@ static void HuffCountData(struct at0 *param_1, byte_t const *data, u32 size,
   }
 }
 
-static u16 HuffConstructTree(struct at0 *param_1, unk_t unsigned huffBitMax) {
+static uint16_t HuffConstructTree(struct at0 *param_1, unsigned huffBitMax) {
   int i;
 
-  unk_t signed a;
-  unk_t signed b;
-  u16 c = huffBitMax;
+  int a;
+  int b;
+  uint16_t c = huffBitMax;
 
   a = -1;
   b = -1;
 
-  u16 d;
-  u16 e ATTR_UNUSED; // ?
+  uint16_t d;
+  uint16_t e ATTR_UNUSED; // ?
 
   while (true) {
     for (i = 0; i < c; ++i) {
@@ -637,8 +639,8 @@ static u16 HuffConstructTree(struct at0 *param_1, unk_t unsigned huffBitMax) {
   return d;
 }
 
-static void HuffAddParentDepthToTable(struct at0 *param_1, u16 param_2,
-                                      u16 param_3) {
+static void HuffAddParentDepthToTable(struct at0 *param_1, uint16_t param_2,
+                                      uint16_t param_3) {
   ++param_1[param_2].refSize;
   ++param_1[param_3].refSize;
 
@@ -653,8 +655,8 @@ static void HuffAddParentDepthToTable(struct at0 *param_1, u16 param_2,
   }
 }
 
-static void HuffAddCodeToTable(struct at0 *param_1, u16 param_2,
-                               unk_t param_3) {
+static void HuffAddCodeToTable(struct at0 *param_1, uint16_t param_2,
+                               int param_3) {
   assert(param_2 != 0xFFFF);
   param_1[param_2].ref = param_3 << 1 | param_1[param_2].at_0x14;
 
@@ -664,9 +666,10 @@ static void HuffAddCodeToTable(struct at0 *param_1, u16 param_2,
   }
 }
 
-static u16 HuffAddCountHWordToTable(struct at0 *param_1, u16 param_2) {
-  u16 a;
-  u16 b;
+static uint16_t HuffAddCountHWordToTable(struct at0 *param_1,
+                                         uint16_t param_2) {
+  uint16_t a;
+  uint16_t b;
 
   switch (param_1[param_2].at_0x0e) {
   case 0:
@@ -687,19 +690,17 @@ static u16 HuffAddCountHWordToTable(struct at0 *param_1, u16 param_2) {
   return a + b + 1;
 }
 
-static void HuffMakeHuffTree(struct HuffTable *param_1, unk2_t unsigned param_2,
-                             u8 huffBitSize) {
-  s16 i;
-
-  s16 a;
-  s16 b;
-
-  unk2_t c;
-  unk2_t d;
-  s16 e;
-  s16 f;
-  u16 g;
-  unk1_t h ATTR_UNUSED; // ?
+static void HuffMakeHuffTree(struct HuffTable *param_1, uint16_t param_2,
+                             uint8_t huffBitSize) {
+  short i;
+  short a;
+  short b;
+  short c;
+  short d;
+  short e;
+  short f;
+  uint16_t g;
+  char h ATTR_UNUSED; // ?
 
   bool l;
 
@@ -711,7 +712,7 @@ static void HuffMakeHuffTree(struct HuffTable *param_1, unk2_t unsigned param_2,
 
 loop:
   while (true) {
-    u16 m = 0;
+    uint16_t m = 0;
 
     for (i = 0; i < param_1->treeEntryCount; ++i) {
       if (param_1->at_0x08[i].at_0x00)
@@ -785,9 +786,9 @@ loop:
   }
 }
 
-static void HuffMakeSubsetHuffTree(struct HuffTable *param_1, u16 param_2,
-                                   u8 param_3) {
-  u16 i = param_1->treeEntryCount;
+static void HuffMakeSubsetHuffTree(struct HuffTable *param_1, uint16_t param_2,
+                                   uint8_t param_3) {
+  uint16_t i = param_1->treeEntryCount;
 
   HuffSetOneNodeOffset(param_1, param_2, param_3);
 
@@ -809,12 +810,12 @@ static void HuffMakeSubsetHuffTree(struct HuffTable *param_1, u16 param_2,
   }
 }
 
-static u8 HuffRemainingNodeCanSetOffset(struct HuffTable *param_1, s16 param_2,
-                                        int huffBitSize) {
-  u16 i;
+static uint8_t HuffRemainingNodeCanSetOffset(struct HuffTable *param_1,
+                                             short param_2, int huffBitSize) {
+  uint16_t i;
 
   const int maxTreeSize = 1 << (huffBitSize - 2);
-  s16 a = maxTreeSize - param_2;
+  short a = maxTreeSize - param_2;
 
   for (i = 0; i < param_1->treeEntryCount; ++i) {
     if (param_1->at_0x08[i].at_0x00) {
@@ -835,15 +836,15 @@ static u8 HuffRemainingNodeCanSetOffset(struct HuffTable *param_1, s16 param_2,
   return true;
 }
 
-static void HuffSetOneNodeOffset(struct HuffTable *param_1, u16 param_2,
-                                 u8 param_3) {
-  u16 a;
-  u16 b = 0;
+static void HuffSetOneNodeOffset(struct HuffTable *param_1, uint16_t param_2,
+                                 uint8_t param_3) {
+  uint16_t a;
+  uint16_t b = 0;
 
   struct at0 *table0 = param_1->at_0x00;
-  u16 *table4 = param_1->at_0x04;
+  uint16_t *table4 = param_1->at_0x04;
   struct at8 *table8 = param_1->at_0x08;
-  u16 tablec = param_1->treeEntryCount;
+  uint16_t tablec = param_1->treeEntryCount;
 
   if (param_3 != 0) {
     a = table8[param_2].at_0x04;
@@ -858,7 +859,7 @@ static void HuffSetOneNodeOffset(struct HuffTable *param_1, u16 param_2,
     b |= 0x8000;
 
     table4[tablec * 2 + 0] = table0[a].at_0x08;
-    table8[tablec].at_0x02 = (u8)table0[a].at_0x08;
+    table8[tablec].at_0x02 = (uint8_t)table0[a].at_0x08;
     table8[tablec].at_0x00 = 0;
   } else {
     table8[tablec].at_0x02 = table0[a].at_0x08;
@@ -868,30 +869,30 @@ static void HuffSetOneNodeOffset(struct HuffTable *param_1, u16 param_2,
     b |= 0x4000;
 
     table4[tablec * 2 + 1] = table0[a].at_0x0a;
-    table8[tablec].at_0x04 = (u8)table0[a].at_0x0a;
+    table8[tablec].at_0x04 = (uint8_t)table0[a].at_0x0a;
     table8[tablec].at_0x01 = 0;
   } else {
     table8[tablec].at_0x04 = table0[a].at_0x0a;
   }
 
-  b |= (u16)(tablec - param_2 - 1);
+  b |= (uint16_t)(tablec - param_2 - 1);
 
   table4[param_2 * 2 + param_3] = b;
   ++param_1->treeEntryCount;
 }
 
-static u32 HuffConvertData(struct at0 *param_1, byte_t const *srcp,
-                           byte_t *dstp, u32 size, u32 maxLength,
-                           u8 huffBitSize) {
-  u32 i, j, k;
+static uint32_t HuffConvertData(struct at0 *param_1, uint8_t const *srcp,
+                                uint8_t *dstp, uint32_t size,
+                                uint32_t maxLength, uint8_t huffBitSize) {
+  uint32_t i, j, k;
 
-  unk_t unsigned a = 0;
-  unk_t unsigned b = 0;
-  u32 length = 0;
+  unsigned a = 0;
+  unsigned b = 0;
+  uint32_t length = 0;
 
   for (i = 0; i < size; ++i) {
-    byte_t d;
-    byte_t e = srcp[i];
+    uint8_t d;
+    uint8_t e = srcp[i];
 
     if (huffBitSize == 8) {
       a = a << param_1[e].refSize | param_1[e].ref;
@@ -937,22 +938,22 @@ static u32 HuffConvertData(struct at0 *param_1, byte_t const *srcp,
     dstp[length++] = 0;
 
   // I Love Reinventing stwbrx !
-  for (i = 0; i < length / sizeof(byte4_t); ++i) {
-    byte_t tmp;
+  for (i = 0; i < length / sizeof(uint32_t); ++i) {
+    uint8_t tmp;
 
-    tmp = dstp[i * sizeof(byte4_t) + 0];
-    dstp[i * sizeof(byte4_t) + 0] = dstp[i * sizeof(byte4_t) + 3];
-    dstp[i * sizeof(byte4_t) + 3] = tmp;
+    tmp = dstp[i * sizeof(uint32_t) + 0];
+    dstp[i * sizeof(uint32_t) + 0] = dstp[i * sizeof(uint32_t) + 3];
+    dstp[i * sizeof(uint32_t) + 3] = tmp;
 
-    tmp = dstp[i * sizeof(byte4_t) + 1];
-    dstp[i * sizeof(byte4_t) + 1] = dstp[i * sizeof(byte4_t) + 2];
-    dstp[i * sizeof(byte4_t) + 2] = tmp;
+    tmp = dstp[i * sizeof(uint32_t) + 1];
+    dstp[i * sizeof(uint32_t) + 1] = dstp[i * sizeof(uint32_t) + 2];
+    dstp[i * sizeof(uint32_t) + 2] = tmp;
   }
 
   return length;
 }
 
-static int CountBitsNeededToEncode(u32 value) {
+static int CountBitsNeededToEncode(uint32_t value) {
   int bits = 0;
   while (value) {
     value >>= 1;
@@ -961,18 +962,18 @@ static int CountBitsNeededToEncode(u32 value) {
   return bits;
 }
 
-static u32 LHEncodeLZ(byte_t const *srcp, u32 size, byte_t *dstp, void *work,
-                      struct HuffTable *huffTables) {
-  u32 length;
-  u32 a;
-  byte_t b;
-  u16 c;
-  byte_t *d;
+static uint32_t LHEncodeLZ(uint8_t const *srcp, uint32_t size, uint8_t *dstp,
+                           void *work, struct HuffTable *huffTables) {
+  uint32_t length;
+  uint32_t a;
+  uint8_t b;
+  uint16_t c;
+  uint8_t *d;
 
-  u8 i;
+  uint8_t i;
 
-  u32 f;
-  unk4_t long g; // or unsigned
+  uint32_t f;
+  int long g; // or unsigned
 
   g = 0x102;
 
@@ -1014,7 +1015,7 @@ static u32 LHEncodeLZ(byte_t const *srcp, u32 size, byte_t *dstp, void *work,
         length += 3;
 
         // LH stuff
-        huffTables[0].at_0x00[0x100 | (u8)(a - 3)].count++;
+        huffTables[0].at_0x00[0x100 | (uint8_t)(a - 3)].count++;
 
         // How many bits are needed to encode the reference offset
         huffTables[1].at_0x00[CountBitsNeededToEncode(c)].count++;
@@ -1049,20 +1050,21 @@ static u32 LHEncodeLZ(byte_t const *srcp, u32 size, byte_t *dstp, void *work,
 }
 
 struct BitWriter {
-  byte_t *data;
+  uint8_t *data;
   uint32_t offset;
   uint32_t value;
   uint32_t bit;
 };
 
-static void BitWriter_Init(struct BitWriter *bitWriter, byte_t *data) {
+static void BitWriter_Init(struct BitWriter *bitWriter, uint8_t *data) {
   bitWriter->data = data;
   bitWriter->offset = 0;
   bitWriter->value = 0;
   bitWriter->bit = 0;
 }
 
-static void BitWriter_Write(struct BitWriter *bitWriter, u32 value, u8 size) {
+static void BitWriter_Write(struct BitWriter *bitWriter, uint32_t value,
+                            uint8_t size) {
   if (size == 0)
     return;
   assert(size <= 32);
@@ -1085,39 +1087,39 @@ static void BitWriter_Flush(struct BitWriter *bitWriter) {
   }
 }
 
-u32 CXCompressLH(byte_t const *srcp, u32 size, byte_t *dstp, byte_t *tmp_dstp,
-                 void *work) {
+uint32_t CXCompressLH(uint8_t const *srcp, uint32_t size, uint8_t *dstp,
+                      uint8_t *tmp_dstp, void *work) {
   struct CXiCompressLHWork *lhWork = work;
 
-  u32 length;
+  uint32_t length;
 
   if (size < 0x1000000) {
-    *(byte4_t *)dstp = CXiConvertEndian32_(size << 8 | CX_COMPRESSION_TYPE_LH);
+    *(uint32_t *)dstp = CXiConvertEndian32_(size << 8 | CX_COMPRESSION_TYPE_LH);
 
-    dstp += sizeof(byte4_t);
+    dstp += sizeof(uint32_t);
 
-    length = sizeof(byte4_t);
+    length = sizeof(uint32_t);
   } else {
-    *(byte4_t *)dstp = CXiConvertEndian32_(CX_COMPRESSION_TYPE_LH);
-    dstp += sizeof(byte4_t);
+    *(uint32_t *)dstp = CXiConvertEndian32_(CX_COMPRESSION_TYPE_LH);
+    dstp += sizeof(uint32_t);
 
-    *(byte4_t *)dstp = CXiConvertEndian32_(size);
-    dstp += sizeof(byte4_t);
+    *(uint32_t *)dstp = CXiConvertEndian32_(size);
+    dstp += sizeof(uint32_t);
 
-    length = sizeof(byte4_t) + sizeof(byte4_t);
+    length = sizeof(uint32_t) + sizeof(uint32_t);
   }
 
   struct HuffTable table[2];
   HuffInitTable(&table[0], lhWork->huffLWork, 1 << 9);
   HuffInitTable(&table[1], lhWork->huffRWork, 1 << 5);
 
-  u32 lz_length = LHEncodeLZ(srcp, size, tmp_dstp, lhWork->lzWork, table);
+  uint32_t lz_length = LHEncodeLZ(srcp, size, tmp_dstp, lhWork->lzWork, table);
   if (!lz_length)
     return 0;
 
-  u16 a = HuffConstructTree(table[0].at_0x00, 1 << 9);
+  uint16_t a = HuffConstructTree(table[0].at_0x00, 1 << 9);
   HuffMakeHuffTree(&table[0], a, 9);
-  u16 b = HuffConstructTree(table[1].at_0x00, 1 << 5);
+  uint16_t b = HuffConstructTree(table[1].at_0x00, 1 << 5);
   HuffMakeHuffTree(&table[1], b, 5);
   table[0].treeEntryCount++;
   table[1].treeEntryCount++;
@@ -1128,15 +1130,15 @@ u32 CXCompressLH(byte_t const *srcp, u32 size, byte_t *dstp, byte_t *tmp_dstp,
   // Write tables
   for (int t = 0; t < 2; ++t) {
     const int bitSize = t ? 5 : 9;
-    const u16 tableSize = (table[t].treeEntryCount - 1) << 1;
-    const u16 tableByteSize = (bitSize * (tableSize >> 2)) / 8;
+    const uint16_t tableSize = (table[t].treeEntryCount - 1) << 1;
+    const uint16_t tableByteSize = (bitSize * (tableSize >> 2)) / 8;
     if (bitSize > 8) {
       BitWriter_Write(&bitWriter, (tableByteSize << 8) | (tableByteSize >> 8),
                       16);
     } else {
       BitWriter_Write(&bitWriter, tableByteSize, 8);
     }
-    for (u16 i = 1; i < tableSize; ++i) {
+    for (uint16_t i = 1; i < tableSize; ++i) {
       uint16_t treeFlags = table[t].at_0x04[i] & 0xC000;
       uint16_t encoded = (treeFlags >> (16 - bitSize)) | table[t].at_0x04[i];
       BitWriter_Write(&bitWriter, encoded, bitSize);
@@ -1152,12 +1154,12 @@ u32 CXCompressLH(byte_t const *srcp, u32 size, byte_t *dstp, byte_t *tmp_dstp,
   struct at0 *refs[2] = {table[0].at_0x00, table[1].at_0x00};
 
   // Write LZ data with huffman
-  for (u32 i = 0; i < lz_length;) {
-    byte_t flags = tmp_dstp[i++];
-    for (u8 j = 0; j < 8; ++j) {
+  for (uint32_t i = 0; i < lz_length;) {
+    uint8_t flags = tmp_dstp[i++];
+    for (uint8_t j = 0; j < 8; ++j) {
       if (flags & 0x80) {
-        u16 lzref_length = tmp_dstp[i++];
-        u16 lzref_offset = tmp_dstp[i] | (tmp_dstp[i + 1] << 8);
+        uint16_t lzref_length = tmp_dstp[i++];
+        uint16_t lzref_offset = tmp_dstp[i] | (tmp_dstp[i + 1] << 8);
         i += 2;
 
         // This bit in the value is used instead of the flags bit to signify an
@@ -1169,7 +1171,7 @@ u32 CXCompressLH(byte_t const *srcp, u32 size, byte_t *dstp, byte_t *tmp_dstp,
                         refs[0][lzref_length].refSize);
         // Write number of bits needed to encode the offset with the second
         // huffman table
-        u16 offsetBits = CountBitsNeededToEncode(lzref_offset);
+        uint16_t offsetBits = CountBitsNeededToEncode(lzref_offset);
         BitWriter_Write(&bitWriter, refs[1][offsetBits].ref,
                         refs[1][offsetBits].refSize);
         // Then write the offset itself with that number of bits
@@ -1178,7 +1180,7 @@ u32 CXCompressLH(byte_t const *srcp, u32 size, byte_t *dstp, byte_t *tmp_dstp,
                           lzref_offset & ((1 << (offsetBits - 1)) - 1),
                           offsetBits - 1);
       } else {
-        byte_t a = tmp_dstp[i++];
+        uint8_t a = tmp_dstp[i++];
         BitWriter_Write(&bitWriter, refs[0][a].ref, refs[0][a].refSize);
       }
       flags <<= 1;

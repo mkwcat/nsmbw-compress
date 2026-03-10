@@ -2,7 +2,6 @@
 #include "cx.h"
 #include "macros.h"
 #include "nsmbw_compress_internal.h"
-#include "types.h"
 #include <assert.h>
 #include <errno.h>
 #include <stdarg.h>
@@ -22,8 +21,8 @@ static const nsmbw_compress_function compress_functions[][2] = {
                                 nsmbw_compress_rl_decode},
     [nsmbw_compress_type_lh] = {nsmbw_compress_lh_encode,
                                 nsmbw_compress_lh_decode},
-    [nsmbw_compress_type_lrc] = {nullptr, nsmbw_compress_lrc_decode},
-    [nsmbw_compress_type_filter_diff] = {nullptr,
+    [nsmbw_compress_type_lrc] = {NULL, nsmbw_compress_lrc_decode},
+    [nsmbw_compress_type_filter_diff] = {NULL,
                                          nsmbw_compress_filter_diff_decode},
     [nsmbw_compress_type_szs] = {nsmbw_compress_szs_encode,
                                  nsmbw_compress_szs_decode},
@@ -152,7 +151,7 @@ static union nsmbw_compress_argument_value
     argument_values[ARRAY_LENGTH(arguments)];
 static bool argument_specified[ARRAY_LENGTH(arguments)] = {0};
 
-static const char *input_file_path = nullptr;
+static const char *input_file_path = NULL;
 
 static const char *executable_name = "nsmbw-compress";
 
@@ -162,18 +161,18 @@ static void *disposable_buffers[16] = {};
 
 static void *malloc_disposable(size_t size) {
   for (size_t i = 0; i < ARRAY_LENGTH(disposable_buffers); ++i) {
-    if (disposable_buffers[i] == nullptr) {
+    if (disposable_buffers[i] == NULL) {
       return disposable_buffers[i] = malloc(size);
     }
   }
   errno = ENOMEM;
-  return nullptr;
+  return NULL;
 }
 
 static int cleanup_disposable(int result) {
   for (size_t i = 0; i < ARRAY_LENGTH(disposable_buffers); ++i) {
     free(disposable_buffers[i]);
-    disposable_buffers[i] = nullptr;
+    disposable_buffers[i] = NULL;
   }
   return result;
 }
@@ -206,7 +205,7 @@ find_long_argument(const char *long_name) {
       return &arguments[i];
     }
   }
-  return nullptr;
+  return NULL;
 }
 
 static const struct nsmbw_compress_argument *
@@ -217,7 +216,7 @@ find_short_argument(char short_name) {
       return &arguments[i];
     }
   }
-  return nullptr;
+  return NULL;
 }
 
 void nsmbw_compress_print_error(const char *message, ...) {
@@ -270,7 +269,7 @@ static int exit_print_help() {
   printf("Supported types for compression:\n"
          "  ");
   for (size_t i = 0; i < ARRAY_LENGTH(compression_type_names); i++) {
-    if (compress_functions[i][0] != nullptr) {
+    if (compress_functions[i][0] != NULL) {
       printf("%s ", compression_type_names[i]);
     }
   }
@@ -278,7 +277,7 @@ static int exit_print_help() {
          "Supported types for decompression:\n"
          "  ");
   for (size_t i = 0; i < ARRAY_LENGTH(compression_type_names); i++) {
-    if (compress_functions[i][1] != nullptr) {
+    if (compress_functions[i][1] != NULL) {
       printf("%s ", compression_type_names[i]);
     }
   }
@@ -321,7 +320,7 @@ static bool parse_arguments(int argc, const char *const *argv) {
       // Long argument name
       const struct nsmbw_compress_argument *long_arg =
           find_long_argument(arg + 2);
-      if (long_arg == nullptr) {
+      if (long_arg == NULL) {
         return exit_unknown_argument(arg);
       }
       if (long_arg->type == nsmbw_compress_argument_type_bool) {
@@ -354,7 +353,7 @@ static bool parse_arguments(int argc, const char *const *argv) {
       // Short argument name
       const struct nsmbw_compress_argument *short_arg =
           find_short_argument(arg[1]);
-      if (short_arg == nullptr) {
+      if (short_arg == NULL) {
         return exit_unknown_argument(arg);
       }
       if (short_arg->type == nsmbw_compress_argument_type_bool) {
@@ -385,7 +384,7 @@ static bool parse_arguments(int argc, const char *const *argv) {
       }
     } else {
       // Positional argument (input file)
-      if (input_file_path != nullptr) {
+      if (input_file_path != NULL) {
         nsmbw_compress_print_error("Multiple input files specified: %s", arg);
         return false;
       }
@@ -483,7 +482,7 @@ static int main_uncompress(const void *input_file, size_t input_file_size,
                                compression_type_names[compression_type],
                                expanded_size);
 
-  if (compress_functions[compression_type][1] == nullptr) {
+  if (compress_functions[compression_type][1] == NULL) {
     nsmbw_compress_print_error(
         "Compression type %s is not supported for decompression",
         compression_type_names[compression_type]);
@@ -499,13 +498,13 @@ static int main_uncompress(const void *input_file, size_t input_file_size,
 
     assert(input_file_path);
     size_t input_path_len = strlen(input_file_path);
-    char *output_path = nullptr;
+    char *output_path = NULL;
     if (extension && input_path_len > strlen(extension) &&
         strcasecmp(input_file_path + input_path_len - strlen(extension),
                    extension) == 0) {
       size_t output_path_len = input_path_len - strlen(extension);
       output_path = (char *)malloc_disposable(output_path_len + 1);
-      if (output_path == nullptr) {
+      if (output_path == NULL) {
         nsmbw_compress_print_error(
             "Failed to allocate memory for output file path: %s",
             strerror(errno));
@@ -517,7 +516,7 @@ static int main_uncompress(const void *input_file, size_t input_file_size,
       nsmbw_compress_print_warning(
           "Output doesn't have standard extension, using default: *.bin");
       output_path = (char *)malloc_disposable(strlen(input_file_path) + 5);
-      if (output_path == nullptr) {
+      if (output_path == NULL) {
         nsmbw_compress_print_error(
             "Failed to allocate memory for output file path: %s",
             strerror(errno));
@@ -529,7 +528,7 @@ static int main_uncompress(const void *input_file, size_t input_file_size,
     // We don't want to overwrite a file that already exists
     nsmbw_compress_print_verbose("Determined output path: %s", output_path);
     FILE *test_file = fopen(output_path, "rb");
-    if (test_file != nullptr) {
+    if (test_file != NULL) {
       nsmbw_compress_print_error("Output file already exists: %s", output_path);
       fclose(test_file);
       return EXIT_FAILURE;
@@ -539,7 +538,7 @@ static int main_uncompress(const void *input_file, size_t input_file_size,
   }
 
   void *uncompressed_data = malloc_disposable(expanded_size);
-  if (uncompressed_data == nullptr) {
+  if (uncompressed_data == NULL) {
     nsmbw_compress_print_error(
         "Failed to allocate memory for decompressed data: %s", strerror(errno));
     return EXIT_FAILURE;
@@ -579,7 +578,7 @@ static int main_compress(const void *input_file, size_t input_file_size,
   nsmbw_compress_print_verbose("Compression type: %s",
                                compression_type_names[compression_type]);
 
-  if (compress_functions[compression_type][0] == nullptr) {
+  if (compress_functions[compression_type][0] == NULL) {
     nsmbw_compress_print_error(
         "Compression type %s is not supported for compression",
         compression_type_names[compression_type]);
@@ -597,7 +596,7 @@ static int main_compress(const void *input_file, size_t input_file_size,
     size_t input_path_len = strlen(input_file_path);
     char *output_path =
         (char *)malloc_disposable(input_path_len + strlen(extension) + 1);
-    if (output_path == nullptr) {
+    if (output_path == NULL) {
       nsmbw_compress_print_error(
           "Failed to allocate memory for output file path: %s",
           strerror(errno));
@@ -609,7 +608,7 @@ static int main_compress(const void *input_file, size_t input_file_size,
     // We don't want to overwrite a file that already exists
     nsmbw_compress_print_verbose("Determined output path: %s", output_path);
     FILE *test_file = fopen(output_path, "rb");
-    if (test_file != nullptr) {
+    if (test_file != NULL) {
       nsmbw_compress_print_error("Output file already exists: %s", output_path);
       fclose(test_file);
       return EXIT_FAILURE;
@@ -620,7 +619,7 @@ static int main_compress(const void *input_file, size_t input_file_size,
 
   void *compressed_data =
       malloc_disposable(0x1000 + input_file_size * CX_COMPRESS_DST_SCALE);
-  if (compressed_data == nullptr) {
+  if (compressed_data == NULL) {
     nsmbw_compress_print_error(
         "Failed to allocate memory for compressed data: %s", strerror(errno));
     return EXIT_FAILURE;
@@ -672,13 +671,13 @@ int main(int argc, const char *const *argv) {
     return cleanup_disposable(nsmbw_compress_test());
   }
 
-  if (input_file_path == nullptr) {
+  if (input_file_path == NULL) {
     nsmbw_compress_print_error("No input file specified.");
     return cleanup_disposable(exit_print_help());
   }
   nsmbw_compress_print_verbose("Opening input file: %s", input_file_path);
   FILE *input_file = fopen(input_file_path, "rb");
-  if (input_file == nullptr) {
+  if (input_file == NULL) {
     nsmbw_compress_print_error("Failed to open input file: %s",
                                strerror(errno));
     return cleanup_disposable(EXIT_FAILURE);
@@ -687,7 +686,7 @@ int main(int argc, const char *const *argv) {
   size_t input_file_size = ftell(input_file);
   fseek(input_file, 0, SEEK_SET);
   void *input_file_data = malloc(input_file_size);
-  if (input_file_data == nullptr) {
+  if (input_file_data == NULL) {
     nsmbw_compress_print_error("Failed to allocate memory for input file: %s",
                                strerror(errno));
     fclose(input_file);
@@ -725,7 +724,7 @@ int main(int argc, const char *const *argv) {
       argument_values[argument_index_output].string_value);
   FILE *output_file =
       fopen(argument_values[argument_index_output].string_value, "wb");
-  if (output_file == nullptr) {
+  if (output_file == NULL) {
     nsmbw_compress_print_error("Failed to open output file: %s",
                                strerror(errno));
     return cleanup_disposable(EXIT_FAILURE);

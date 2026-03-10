@@ -11,7 +11,7 @@ bool nsmbw_compress_lrc_decode(const uint8_t *src, uint8_t *dst,
   (void)params;
 
   void *work_buffer = malloc(CX_SECURE_UNCOMPRESS_LRC_WORK_SIZE);
-  if (work_buffer == nullptr) {
+  if (work_buffer == NULL) {
     nsmbw_compress_print_error(
         "Failed to allocate memory for LRC decompression work buffer: %s",
         strerror(errno));

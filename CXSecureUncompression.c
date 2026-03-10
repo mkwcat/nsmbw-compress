@@ -6,76 +6,74 @@
 
 #include "CXInternal.h"
 #include "cx.h"
-#include "decomp.h" // unk_t
 #include "macros.h"
-#include "types.h"
+#include <stdint.h>
 
 /*******************************************************************************
  * types
  */
 
 struct BitReader {
-  byte_t const *data;    // size 0x04, offset 0x00
-  unk4_t byteOffset;     // size 0x04, offset 0x04
-  unk4_t unsigned value; // size 0x04, offset 0x08
-  unk4_t bit;            // size 0x04, offset 0x0c
-  unk4_t fullSize;       // size 0x04, offset 0x0c
+  uint8_t const *data; // size 0x04, offset 0x00
+  int byteOffset;      // size 0x04, offset 0x04
+  int unsigned value;  // size 0x04, offset 0x08
+  int bit;             // size 0x04, offset 0x0c
+  int fullSize;        // size 0x04, offset 0x0c
 }; // size 0x14?
 
 struct RCInfo {
-  unk4_t unsigned *at_0x00; // size 0x04, offset 0x00
-  unk4_t unsigned *at_0x04; // size 0x04, offset 0x04
-  unk4_t unsigned at_0x08;  // size 0x04, offset 0x08
-  unk1_t unsigned at_0x0c;  // size 0x04, offset 0x0c
+  int unsigned *at_0x00; // size 0x04, offset 0x00
+  int unsigned *at_0x04; // size 0x04, offset 0x04
+  int unsigned at_0x08;  // size 0x04, offset 0x08
+  uint8_t at_0x0c;       // size 0x04, offset 0x0c
 }; // size 0x10?
 
 struct RCState {
-  unk4_t at_0x00;          // size 0x04, offset 0x00
-  unk4_t unsigned at_0x04; // size 0x04, offset 0x04
-  unk4_t at_0x08;          // size 0x04, offset 0x08
-  unk1_t at_0x0c;          // size 0x04, offset 0x0c
-  byte_t pad0_[3];         // alignment?
-  unk4_t at_0x10;          // size 0x04, offset 0x10
+  int at_0x00;          // size 0x04, offset 0x00
+  int unsigned at_0x04; // size 0x04, offset 0x04
+  int at_0x08;          // size 0x04, offset 0x08
+  char at_0x0c;         // size 0x04, offset 0x0c
+  uint8_t pad0_[3];     // alignment?
+  int at_0x10;          // size 0x04, offset 0x10
 }; // size 0x14?
 
 /*******************************************************************************
  * local function declarations
  */
 
-static unk_t CXiHuffImportTree(u16 *tree, byte_t const *stream, u8,
-                               unk_t unsigned);
+static int CXiHuffImportTree(uint16_t *tree, uint8_t const *stream, uint8_t,
+                             unsigned);
 
 // only reasonable way i see an init function come after a read function
 static inline void BitReader_Init(struct BitReader *bitReader,
-                                  byte_t const *stream, unk_t);
+                                  uint8_t const *stream, int);
 // why is it signed char now
 static signed char BitReader_Read(struct BitReader *bitReader);
 
-static inline void RCInitInfo_(struct RCInfo *rcInfo, unk1_t unsigned,
-                               unk4_t unsigned *);
+static inline void RCInitInfo_(struct RCInfo *rcInfo, uint8_t, int unsigned *);
 static inline void RCInitState_(struct RCState *rcState);
-static void RCAddCount_(struct RCInfo *rcInfo, u16);
-static u16 RCSearch_(struct RCInfo *rcInfo, unk_t, unk_t unsigned, unk_t);
-static u16 RCGetData_(byte_t const *stream, struct RCInfo *rcInfo,
-                      struct RCState *rcState, unk_t *);
+static void RCAddCount_(struct RCInfo *rcInfo, uint16_t);
+static uint16_t RCSearch_(struct RCInfo *rcInfo, int, unsigned, int);
+static uint16_t RCGetData_(uint8_t const *stream, struct RCInfo *rcInfo,
+                           struct RCState *rcState, int *);
 
 /*******************************************************************************
  * functions
  */
 
 static uint32_t ReadU32LE(const void *data, size_t offset) {
-  const byte_t *dataBytes = (const byte_t *)data;
+  const uint8_t *dataBytes = (const uint8_t *)data;
   return (uint32_t)dataBytes[offset] | (uint32_t)dataBytes[offset + 1] << 8 |
          (uint32_t)dataBytes[offset + 2] << 16 |
          (uint32_t)dataBytes[offset + 3] << 24;
 }
 
 static uint16_t ReadU16LE(const void *data, size_t offset) {
-  const byte_t *dataBytes = (const byte_t *)data;
+  const uint8_t *dataBytes = (const uint8_t *)data;
   return (uint16_t)dataBytes[offset] | (uint16_t)dataBytes[offset + 1] << 8;
 }
 
-CXSecureResult CXSecureUncompressAny(void const *compressed, u32 length,
+CXSecureResult CXSecureUncompressAny(void const *compressed, uint32_t length,
                                      void *uncompressed) {
   switch (CXGetCompressionType(compressed)) {
   case CX_COMPRESSION_TYPE_RUN_LENGTH:
@@ -99,15 +97,15 @@ CXSecureResult CXSecureUncompressAny(void const *compressed, u32 length,
   }
 }
 
-CXSecureResult CXSecureUncompressRL(void const *compressed, u32 length,
+CXSecureResult CXSecureUncompressRL(void const *compressed, uint32_t length,
                                     void *uncompressed) {
-  byte_t const *src = compressed;
-  byte_t *dst = uncompressed;
+  uint8_t const *src = compressed;
+  uint8_t *dst = uncompressed;
 
-  byte1_t secstat = ReadU32LE(src, 0);
+  uint8_t secstat = ReadU32LE(src, 0);
 
-  u32 size = ReadU32LE(src, 0) >> 8;
-  s32 remainingLength = length;
+  uint32_t size = ReadU32LE(src, 0) >> 8;
+  int32_t remainingLength = length;
 
   if ((secstat & CX_COMPRESSION_TYPE_MASK) != CX_COMPRESSION_TYPE_RUN_LENGTH)
     return CXSECURE_EBADTYPE;
@@ -118,22 +116,22 @@ CXSecureResult CXSecureUncompressRL(void const *compressed, u32 length,
   if (length <= 4)
     return CXSECURE_E2SMALL;
 
-  src += sizeof(byte4_t);
-  remainingLength -= sizeof(byte4_t);
+  src += sizeof(uint32_t);
+  remainingLength -= sizeof(uint32_t);
 
   if (!size) {
     if (remainingLength < 4)
       return CXSECURE_E2SMALL;
 
     size = ReadU32LE(src, 0);
-    src += sizeof(byte4_t);
-    remainingLength -= sizeof(byte4_t);
+    src += sizeof(uint32_t);
+    remainingLength -= sizeof(uint32_t);
   }
 
   while (size) {
-    byte_t byte = *src++;
+    uint8_t byte = *src++;
 
-    s32 runLength = byte & 0x7f;
+    int32_t runLength = byte & 0x7f;
 
     --remainingLength;
     if (remainingLength < 0)
@@ -161,7 +159,7 @@ CXSecureResult CXSecureUncompressRL(void const *compressed, u32 length,
         return CXSECURE_EBADSIZE;
 
       size -= runLength;
-      byte_t byte = *src++;
+      uint8_t byte = *src++;
 
       remainingLength -= 1;
       if (remainingLength < 0)
@@ -182,16 +180,16 @@ CXSecureResult CXSecureUncompressRL(void const *compressed, u32 length,
   return CXSECURE_ESUCCESS;
 }
 
-CXSecureResult CXSecureUncompressLZ(void const *compressed, u32 length,
+CXSecureResult CXSecureUncompressLZ(void const *compressed, uint32_t length,
                                     void *uncompressed) {
-  byte_t const *src = compressed;
-  byte_t *dst = uncompressed;
+  uint8_t const *src = compressed;
+  uint8_t *dst = uncompressed;
 
-  u8 secstat = ReadU32LE(src, 0) & 0xff;
-  u32 size = ReadU32LE(src, 0) >> 8;
-  s32 remainingLength = length;
+  uint8_t secstat = ReadU32LE(src, 0) & 0xff;
+  uint32_t size = ReadU32LE(src, 0) >> 8;
+  int32_t remainingLength = length;
 
-  BOOL stat = BOOLIFY_TERNARY(IN_BUFFER_AT(byte1_t, src, 0) & 0x0f);
+  bool stat = BOOLIFY_TERNARY(IN_BUFFER_AT(uint8_t, src, 0) & 0x0f);
 
   if ((secstat & CX_COMPRESSION_TYPE_MASK) != CX_COMPRESSION_TYPE_LEMPEL_ZIV)
     return CXSECURE_EBADTYPE;
@@ -202,21 +200,21 @@ CXSecureResult CXSecureUncompressLZ(void const *compressed, u32 length,
   if (length <= 4)
     return CXSECURE_E2SMALL;
 
-  src += sizeof(byte4_t);
-  remainingLength -= sizeof(byte4_t);
+  src += sizeof(uint32_t);
+  remainingLength -= sizeof(uint32_t);
 
   if (!size) {
     if (remainingLength < 4)
       return CXSECURE_E2SMALL;
 
     size = ReadU32LE(src, 0);
-    src += sizeof(byte4_t);
-    remainingLength -= sizeof(byte4_t);
+    src += sizeof(uint32_t);
+    remainingLength -= sizeof(uint32_t);
   }
 
   while (size) {
-    u32 i;
-    byte4_t flags = *src++;
+    uint32_t i;
+    uint32_t flags = *src++;
 
     --remainingLength;
     if (remainingLength < 0)
@@ -232,7 +230,7 @@ CXSecureResult CXSecureUncompressLZ(void const *compressed, u32 length,
 
         --size;
       } else {
-        s32 length2 = *src >> 4;
+        int32_t length2 = *src >> 4;
 
         if (!stat) {
           length2 += 3;
@@ -255,7 +253,7 @@ CXSecureResult CXSecureUncompressLZ(void const *compressed, u32 length,
           }
         }
 
-        s32 offset = (*src++ & 0x0f) << 8;
+        int32_t offset = (*src++ & 0x0f) << 8;
         offset = (offset | *src++) + 1;
 
         remainingLength -= 2;
@@ -303,29 +301,29 @@ CXSecureResult CXSecureUncompressLZ(void const *compressed, u32 length,
   return CXSECURE_ESUCCESS;
 }
 
-_Bool CXiVerifyHuffmanTable_(void const *param_1, u8 param_2) {
+_Bool CXiVerifyHuffmanTable_(void const *param_1, uint8_t param_2) {
   // What would this be for
-  static byte_t const FLAGS_ARRAY_NUM[4] ATTR_UNUSED = {0, 0, 0, 0x40};
+  static uint8_t const FLAGS_ARRAY_NUM[4] ATTR_UNUSED = {0, 0, 0, 0x40};
 
-  byte_t const *a = param_1;
-  byte_t const *b = a + 1;
-  unk_t unsigned c = *a;
-  byte_t const *d = (byte_t *)param_1 + ((c + 1) << 1);
+  uint8_t const *a = param_1;
+  uint8_t const *b = a + 1;
+  unsigned c = *a;
+  uint8_t const *d = (uint8_t *)param_1 + ((c + 1) << 1);
 
-  byte_t e[sizeof(byte_t) * 0x40];
-  for (u32 i = 0; i < ARRAY_LENGTH(e); ++i)
+  uint8_t e[sizeof(uint8_t) * 0x40];
+  for (uint32_t i = 0; i < ARRAY_LENGTH(e); ++i)
     e[i] = 0;
 
   if (param_2 == 4 && c >= 16)
     return false;
 
-  unk_t unsigned f = 1;
+  unsigned f = 1;
 
   for (a = b; a < d; ++f, (void)++a) {
     if (e[f / 8] & (1 << (f % 8)))
       continue;
 
-    unk_t g = ((*a & 0x3f) + 1) << 1;
+    int g = ((*a & 0x3f) + 1) << 1;
     size_t h = ((size_t)a >> 1 << 1) + g;
 
     if (*a == 0x00 && f >= c << 1)
@@ -335,36 +333,36 @@ _Bool CXiVerifyHuffmanTable_(void const *param_1, u8 param_2) {
       return false;
 
     if (*a & 0x80) {
-      unk_t unsigned j = (f & ~1) + g;
-      e[j / 8] |= (byte_t)(1 << (j % 8));
+      unsigned j = (f & ~1) + g;
+      e[j / 8] |= (uint8_t)(1 << (j % 8));
     }
 
     if (*a & 0x40) {
-      unk_t unsigned k = (f & ~1) + g + 1;
-      e[k / 8] |= (byte_t)(1 << (k % 8));
+      unsigned k = (f & ~1) + g + 1;
+      e[k / 8] |= (uint8_t)(1 << (k % 8));
     }
   }
 
   return true;
 }
 
-CXSecureResult CXSecureUncompressHuffman(void const *compressed, u32 length,
-                                         void *uncompressed) {
-  byte_t const *src = compressed;
-  byte_t *dst = uncompressed;
+CXSecureResult CXSecureUncompressHuffman(void const *compressed,
+                                         uint32_t length, void *uncompressed) {
+  uint8_t const *src = compressed;
+  uint8_t *dst = uncompressed;
 
-  u8 secstat = ReadU32LE(src, 0) & 0xff;
-  s32 size = ReadU32LE(src, 0) >> 8;
+  uint8_t secstat = ReadU32LE(src, 0) & 0xff;
+  int32_t size = ReadU32LE(src, 0) >> 8;
 
-  byte_t const *base = size ? src + 4 : src + 8;
-  byte_t const *basep1 = base + 1;
+  uint8_t const *base = size ? src + 4 : src + 8;
+  uint8_t const *basep1 = base + 1;
 
-  u32 stat = IN_BUFFER_AT(byte1_t, src, 0) & 0x0f;
-  unk_t unsigned b = 0;
-  unk_t unsigned c = 0;
-  unk_t d = (stat & 7) + 4;
-  s32 remainingLength = length;
-  unk_t unsigned e = (*base + 1) << 1;
+  uint32_t stat = IN_BUFFER_AT(uint8_t, src, 0) & 0x0f;
+  unsigned b = 0;
+  unsigned c = 0;
+  int d = (stat & 7) + 4;
+  int32_t remainingLength = length;
+  unsigned e = (*base + 1) << 1;
 
   if ((secstat & CX_COMPRESSION_TYPE_MASK) != CX_COMPRESSION_TYPE_HUFFMAN)
     return CXSECURE_EBADTYPE;
@@ -396,26 +394,27 @@ CXSecureResult CXSecureUncompressHuffman(void const *compressed, u32 length,
   while (size > 0) {
     int i = 32;
 
-    byte4_t f;
+    uint32_t f;
 #if defined(__MWERKS__)
     // NOTE: assignment to lvalue cast is a CW extension
-    f = CXiConvertEndian32_(*((byte4_t *)(src))++);
+    f = CXiConvertEndian32_(*((uint32_t *)(src))++);
 #else
     f = ReadU32LE(src, 0);
-    src += sizeof(byte4_t);
+    src += sizeof(uint32_t);
 #endif
 
-    remainingLength -= sizeof(byte4_t);
+    remainingLength -= sizeof(uint32_t);
     if (remainingLength < 0)
       return CXSECURE_E2SMALL;
 
     while (--i >= 0) {
-      unk_t g = f >> 31;
-      unk_t h = *base;
+      int g = f >> 31;
+      int h = *base;
       h <<= g;
 
       // ok
-      byte_t const *baseAligned = (byte_t const *)(((size_t)(base) >> 1) << 1);
+      uint8_t const *baseAligned =
+          (uint8_t const *)(((size_t)(base) >> 1) << 1);
       base = baseAligned + (((*base & 0x3f) + 1) << 1) + g;
 
       if (h & 0x80) {
@@ -433,15 +432,15 @@ CXSecureResult CXSecureUncompressHuffman(void const *compressed, u32 length,
         if (c == d) {
 #if defined(__MWERKS__)
           // NOTE: assignment to lvalue cast is a CW extension
-          *((byte4_t *)(dst))++ = CXiConvertEndian32_(b);
+          *((uint32_t *)(dst))++ = CXiConvertEndian32_(b);
 #else
           dst[0] = b & 0xFF;
           dst[1] = b >> 8;
           dst[2] = b >> 16;
           dst[3] = b >> 24;
-          dst += sizeof(byte4_t);
+          dst += sizeof(uint32_t);
 #endif
-          size -= sizeof(byte4_t);
+          size -= sizeof(uint32_t);
           c = 0;
         }
       }
@@ -459,15 +458,15 @@ CXSecureResult CXSecureUncompressHuffman(void const *compressed, u32 length,
   return CXSECURE_ESUCCESS;
 }
 
-static unk_t CXiHuffImportTree(u16 *tree, byte_t const *param_2, u8 huffBitSize,
-                               unk_t unsigned param_4) {
-  unk_t a;
-  unk_t b;
-  unk_t unsigned c;
-  unk_t unsigned d;
-  unk_t e;
-  unk_t unsigned f;
-  unk_t unsigned g;
+static int CXiHuffImportTree(uint16_t *tree, uint8_t const *param_2,
+                             uint8_t huffBitSize, unsigned param_4) {
+  int a;
+  int b;
+  unsigned c;
+  unsigned d;
+  int e;
+  unsigned f;
+  unsigned g;
 
   a = 1;
   c = 0;
@@ -481,13 +480,13 @@ static unk_t CXiHuffImportTree(u16 *tree, byte_t const *param_2, u8 huffBitSize,
   if (huffBitSize > 8) {
     b = ReadU16LE(param_2, 0);
 
-    param_2 += sizeof(byte2_t);
-    f += sizeof(byte2_t);
+    param_2 += sizeof(uint16_t);
+    f += sizeof(uint16_t);
   } else {
-    b = IN_BUFFER_AT(byte1_t, param_2, 0);
+    b = IN_BUFFER_AT(uint8_t, param_2, 0);
 
-    param_2 += sizeof(byte1_t);
-    f += sizeof(byte1_t);
+    param_2 += sizeof(uint8_t);
+    f += sizeof(uint8_t);
   }
 
   b = (b + 1) << 2;
@@ -516,17 +515,17 @@ static unk_t CXiHuffImportTree(u16 *tree, byte_t const *param_2, u8 huffBitSize,
   return b;
 }
 
-CXSecureResult CXSecureUnfilterDiff(void const *compressed, u32 length,
+CXSecureResult CXSecureUnfilterDiff(void const *compressed, uint32_t length,
                                     void *uncompressed) {
-  byte_t const *src = compressed;
-  byte_t *dst = uncompressed;
+  uint8_t const *src = compressed;
+  uint8_t *dst = uncompressed;
 
-  u32 stat = IN_BUFFER_AT(byte1_t, src, 0) & 0x0f;
-  u8 stat2 = ReadU32LE(src, 0) & 0xff;
-  s32 size = ReadU32LE(src, 0) >> 8;
-  u32 sum = 0;
+  uint32_t stat = IN_BUFFER_AT(uint8_t, src, 0) & 0x0f;
+  uint8_t stat2 = ReadU32LE(src, 0) & 0xff;
+  int32_t size = ReadU32LE(src, 0) >> 8;
+  uint32_t sum = 0;
 
-  s32 remainingLength = length;
+  int32_t remainingLength = length;
 
   if ((stat2 & CX_COMPRESSION_TYPE_MASK) != CX_COMPRESSION_TYPE_FILTER_DIFF)
     return CXSECURE_EBADTYPE;
@@ -537,18 +536,18 @@ CXSecureResult CXSecureUnfilterDiff(void const *compressed, u32 length,
   if (length <= 4)
     return CXSECURE_E2SMALL;
 
-  src += sizeof(byte4_t);
-  remainingLength -= sizeof(byte4_t);
+  src += sizeof(uint32_t);
+  remainingLength -= sizeof(uint32_t);
 
   if (stat != 0x01) {
     do {
-      byte1_t num = *src++;
+      uint8_t num = *src++;
 
-      remainingLength -= sizeof(byte1_t);
+      remainingLength -= sizeof(uint8_t);
       if (remainingLength < 0)
         return CXSECURE_E2SMALL;
 
-      size -= sizeof(byte1_t);
+      size -= sizeof(uint8_t);
 
       sum += num;
 
@@ -556,20 +555,20 @@ CXSecureResult CXSecureUnfilterDiff(void const *compressed, u32 length,
     } while (size > 0);
   } else {
     do {
-      byte2_t num = ReadU16LE(src, 0);
-      src += sizeof(byte2_t);
+      uint16_t num = ReadU16LE(src, 0);
+      src += sizeof(uint16_t);
 
-      remainingLength -= sizeof(byte2_t);
+      remainingLength -= sizeof(uint16_t);
       if (remainingLength < 0)
         return CXSECURE_E2SMALL;
 
-      size -= sizeof(byte2_t);
+      size -= sizeof(uint16_t);
 
       sum += num;
 
       dst[0] = sum & 0xFF;
       dst[1] = sum >> 8;
-      dst += sizeof(byte2_t);
+      dst += sizeof(uint16_t);
     } while (size > 0);
   }
 
@@ -579,8 +578,8 @@ CXSecureResult CXSecureUnfilterDiff(void const *compressed, u32 length,
   return CXSECURE_ESUCCESS;
 }
 
-static void BitReader_Init(struct BitReader *bitReader, byte_t const *param_2,
-                           unk_t param_3) {
+static void BitReader_Init(struct BitReader *bitReader, uint8_t const *param_2,
+                           int param_3) {
   bitReader->data = param_2;
   bitReader->byteOffset = 0;
   bitReader->value = 0;
@@ -590,7 +589,7 @@ static void BitReader_Init(struct BitReader *bitReader, byte_t const *param_2,
 
 static signed char BitReader_Read(struct BitReader *bitReader) {
   if (!bitReader->bit) {
-    if ((u32)bitReader->byteOffset >= bitReader->fullSize)
+    if ((uint32_t)bitReader->byteOffset >= bitReader->fullSize)
       return CXSECURE_EBADTYPE;
 
     bitReader->value = bitReader->data[bitReader->byteOffset++];
@@ -603,28 +602,28 @@ static signed char BitReader_Read(struct BitReader *bitReader) {
   return a;
 }
 
-_Bool CXiLHVerifyTable(void const *tree, u8 huffBitSize) {
-  u16 const *treeCast = tree;
-  u16 const *treeData = treeCast + 1;
-  unk_t unsigned c = *treeCast;
-  u16 const *d = (u16 *)tree + c;
-  u16 e = (1 << (huffBitSize - 2)) - 1;
-  u16 f = 1 << (huffBitSize - 1);
-  u16 g = 1 << (huffBitSize - 2);
+_Bool CXiLHVerifyTable(void const *tree, uint8_t huffBitSize) {
+  uint16_t const *treeCast = tree;
+  uint16_t const *treeData = treeCast + 1;
+  unsigned c = *treeCast;
+  uint16_t const *d = (uint16_t *)tree + c;
+  uint16_t e = (1 << (huffBitSize - 2)) - 1;
+  uint16_t f = 1 << (huffBitSize - 1);
+  uint16_t g = 1 << (huffBitSize - 2);
 
-  byte_t h[sizeof(u16) * 0x40];
-  for (u32 i = 0; i < ARRAY_LENGTH(h); ++i)
+  uint8_t h[sizeof(uint16_t) * 0x40];
+  for (uint32_t i = 0; i < ARRAY_LENGTH(h); ++i)
     h[i] = 0;
 
   if (c > 1 << (huffBitSize + 1))
     return false;
 
-  unk_t unsigned j = 1;
+  unsigned j = 1;
   for (treeCast = treeData; treeCast < d; ++j, (void)++treeCast) {
     if (h[j / 8] & (1 << (j % 8)))
       continue;
 
-    unk_t k = ((*treeCast & e) + 1) << 1;
+    int k = ((*treeCast & e) + 1) << 1;
     size_t l = ((size_t)treeCast & ~3) + (k << 1);
 
     if (*treeCast == 0x00 && j >= c - 4)
@@ -634,29 +633,29 @@ _Bool CXiLHVerifyTable(void const *tree, u8 huffBitSize) {
       return false;
 
     if (*treeCast & f) {
-      unk_t unsigned m = (j & ~1) + k;
-      h[m / 8] |= (byte_t)(1 << (m % 8));
+      unsigned m = (j & ~1) + k;
+      h[m / 8] |= (uint8_t)(1 << (m % 8));
     }
 
     if (*treeCast & g) {
-      unk_t unsigned n = (j & ~1) + k + 1;
-      h[n / 8] |= (byte_t)(1 << (n % 8));
+      unsigned n = (j & ~1) + k + 1;
+      h[n / 8] |= (uint8_t)(1 << (n % 8));
     }
   }
 
   return true;
 }
 
-static inline int CXiReadNextHuffValue(struct BitReader *bitReader, u16 *tree,
-                                       u8 huffBitSize) {
-  const u16 *const treeEnd = tree + *tree + 1;
+static inline int CXiReadNextHuffValue(struct BitReader *bitReader,
+                                       uint16_t *tree, uint8_t huffBitSize) {
+  const uint16_t *const treeEnd = tree + *tree + 1;
   tree += 1;
   const int huffBitTop = (1 << huffBitSize) >> 1;
   const int huffBitMask = ((1 << huffBitSize) >> 2) - 1;
 
   do {
     signed char bit = BitReader_Read(bitReader);
-    unk_t index = (((*tree & huffBitMask) + 1) << 1) + bit;
+    int index = (((*tree & huffBitMask) + 1) << 1) + bit;
 
     if (bit < 0)
       return CXSECURE_E2SMALL;
@@ -674,13 +673,13 @@ static inline int CXiReadNextHuffValue(struct BitReader *bitReader, u16 *tree,
   return CXSECURE_EBADTABLE;
 }
 
-CXSecureResult CXSecureUncompressLH(void const *compressed, u32 length,
-                                    byte_t *uncompressed, u16 *param_4) {
-  u32 size;
-  unk_t unsigned outpos = 0;
-  byte_t const *src = compressed;
+CXSecureResult CXSecureUncompressLH(void const *compressed, uint32_t length,
+                                    uint8_t *uncompressed, uint16_t *param_4) {
+  uint32_t size;
+  unsigned outpos = 0;
+  uint8_t const *src = compressed;
 
-  if ((IN_BUFFER_AT(byte1_t, compressed, 0) & CX_COMPRESSION_TYPE_MASK) !=
+  if ((IN_BUFFER_AT(uint8_t, compressed, 0) & CX_COMPRESSION_TYPE_MASK) !=
       CX_COMPRESSION_TYPE_LH) {
     return CXSECURE_EBADTYPE;
   }
@@ -688,17 +687,17 @@ CXSecureResult CXSecureUncompressLH(void const *compressed, u32 length,
   if (length <= 4)
     return CXSECURE_E2SMALL;
 
-  u16 *tree0 = param_4;
-  u16 *tree1 = param_4 + 0x400;
-  u16 *work_end ATTR_UNUSED = param_4 + 0x440;
+  uint16_t *tree0 = param_4;
+  uint16_t *tree1 = param_4 + 0x400;
+  uint16_t *work_end ATTR_UNUSED = param_4 + 0x440;
 
   // size
   size = ReadU32LE(src, 0) >> 8;
-  src += sizeof(byte4_t);
+  src += sizeof(uint32_t);
 
   if (!size) {
     size = ReadU32LE(src, 0);
-    src += sizeof(byte4_t);
+    src += sizeof(uint32_t);
 
     if (length < 8)
       return CXSECURE_E2SMALL;
@@ -735,14 +734,14 @@ CXSecureResult CXSecureUncompressLH(void const *compressed, u32 length,
       continue;
     }
 
-    u16 ref_length = (ret & 0xff) + 3;
+    uint16_t ref_length = (ret & 0xff) + 3;
 
     ret = CXiReadNextHuffValue(&bitReader, tree1, 5);
     if (ret < 0)
       return ret;
-    u16 ref_offset_bits = ret;
-    u16 ref_offset = 0;
-    const u16 ref_offset_bits_save = ref_offset_bits;
+    uint16_t ref_offset_bits = ret;
+    uint16_t ref_offset = 0;
+    const uint16_t ref_offset_bits_save = ref_offset_bits;
 
     if (ref_offset_bits) {
       ref_offset = 1;
@@ -765,7 +764,7 @@ CXSecureResult CXSecureUncompressLH(void const *compressed, u32 length,
     }
   }
 
-  if ((u32)bitReader.fullSize - bitReader.byteOffset > 0x20)
+  if ((uint32_t)bitReader.fullSize - bitReader.byteOffset > 0x20)
     return CXSECURE_E2BIG;
 
   (void)outpos;
@@ -774,10 +773,10 @@ CXSecureResult CXSecureUncompressLH(void const *compressed, u32 length,
   return CXSECURE_ESUCCESS;
 }
 
-static void RCInitInfo_(struct RCInfo *rcInfo, unk1_t unsigned param_2,
-                        unk4_t unsigned *param_3) {
-  u32 i;
-  unk_t a = 1 << param_2;
+static void RCInitInfo_(struct RCInfo *rcInfo, uint8_t param_2,
+                        int unsigned *param_3) {
+  uint32_t i;
+  int a = 1 << param_2;
 
   rcInfo->at_0x0c = param_2;
   rcInfo->at_0x00 = param_3;
@@ -799,9 +798,9 @@ static void RCInitState_(struct RCState *rcState) {
   rcState->at_0x10 = 0;
 }
 
-static void RCAddCount_(struct RCInfo *rcInfo, u16 param_2) {
-  u32 i;
-  unk_t unsigned a = 1 << rcInfo->at_0x0c;
+static void RCAddCount_(struct RCInfo *rcInfo, uint16_t param_2) {
+  uint32_t i;
+  unsigned a = 1 << rcInfo->at_0x0c;
 
   ++rcInfo->at_0x00[param_2];
   ++rcInfo->at_0x08;
@@ -827,16 +826,16 @@ static void RCAddCount_(struct RCInfo *rcInfo, u16 param_2) {
   }
 }
 
-static u16 RCSearch_(struct RCInfo *rcInfo, unk_t param_2,
-                     unk_t unsigned param_3, unk_t param_4) {
-  unk_t a = 1 << rcInfo->at_0x0c;
-  unk_t b = param_2 - param_4;
-  unk_t unsigned c = param_3 / rcInfo->at_0x08;
-  unk_t unsigned d = b / c;
-  unk_t unsigned e = 0;
-  unk_t f = a - 1;
+static uint16_t RCSearch_(struct RCInfo *rcInfo, int param_2, unsigned param_3,
+                          int param_4) {
+  int a = 1 << rcInfo->at_0x0c;
+  int b = param_2 - param_4;
+  unsigned c = param_3 / rcInfo->at_0x08;
+  unsigned d = b / c;
+  unsigned e = 0;
+  int f = a - 1;
 
-  unk_t g;
+  int g;
   while (e < f) {
     g = (e + f) >> 1;
 
@@ -853,15 +852,15 @@ static u16 RCSearch_(struct RCInfo *rcInfo, unk_t param_2,
   return g;
 }
 
-static u16 RCGetData_(byte_t const *stream, struct RCInfo *rcInfo,
-                      struct RCState *rcState, unk_t *param_4) {
-  u16 a =
+static uint16_t RCGetData_(uint8_t const *stream, struct RCInfo *rcInfo,
+                           struct RCState *rcState, int *param_4) {
+  uint16_t a =
       RCSearch_(rcInfo, rcState->at_0x08, rcState->at_0x04, rcState->at_0x00);
-  unk_t b = 0;
+  int b = 0;
 
   // arbitrary block
   {
-    unk_t c = rcState->at_0x04 / rcInfo->at_0x08;
+    int c = rcState->at_0x04 / rcInfo->at_0x08;
 
     rcState->at_0x00 += c * rcInfo->at_0x04[a];
     rcState->at_0x04 = c * rcInfo->at_0x00[a];
@@ -880,14 +879,13 @@ static u16 RCGetData_(byte_t const *stream, struct RCInfo *rcInfo,
   return a;
 }
 
-CXSecureResult CXSecureUncompressLRC(void const *compressed, u32 length,
-                                     byte_t *uncompressed,
-                                     unk_t unsigned *param_3) {
-  byte_t const *src = compressed;
-  unk_t unsigned a = 0;
-  u32 size = 0;
+CXSecureResult CXSecureUncompressLRC(void const *compressed, uint32_t length,
+                                     uint8_t *uncompressed, unsigned *param_3) {
+  uint8_t const *src = compressed;
+  unsigned a = 0;
+  uint32_t size = 0;
 
-  if ((IN_BUFFER_AT(byte1_t, compressed, 0) & CX_COMPRESSION_TYPE_MASK) !=
+  if ((IN_BUFFER_AT(uint8_t, compressed, 0) & CX_COMPRESSION_TYPE_MASK) !=
       CX_COMPRESSION_TYPE_LRC) {
     return CXSECURE_EBADTYPE;
   }
@@ -910,11 +908,11 @@ CXSecureResult CXSecureUncompressLRC(void const *compressed, u32 length,
 
   // size
   size = ReadU32LE(src, 0) >> 8;
-  src += sizeof(byte4_t);
+  src += sizeof(uint32_t);
 
   if (!size) {
     size = ReadU32LE(src, 0);
-    src += sizeof(byte4_t);
+    src += sizeof(uint32_t);
 
     if (length < 8)
       return CXSECURE_E2SMALL;
@@ -925,13 +923,13 @@ CXSecureResult CXSecureUncompressLRC(void const *compressed, u32 length,
 
   // What
   state.at_0x08 = src[0] << 24 | src[1] << 16 | src[2] << 8 | src[3];
-  src += sizeof(byte_t) * 4;
+  src += sizeof(uint8_t) * 4;
 
   while (a < size) {
-    unk_t b;
+    int b;
 
     // why is recast necessary?
-    u16 c = (u16)RCGetData_(src, &info1, &state, &b);
+    uint16_t c = (uint16_t)RCGetData_(src, &info1, &state, &b);
     src += b;
 
     if (c < 0x100) {
@@ -939,7 +937,7 @@ CXSecureResult CXSecureUncompressLRC(void const *compressed, u32 length,
       continue;
     }
 
-    u16 d = (c & 0xff) + 3;
+    uint16_t d = (c & 0xff) + 3;
 
     c = RCGetData_(src, &info2, &state, &b) + 1;
     src += b;

@@ -11,7 +11,7 @@ bool nsmbw_compress_lh_decode(const uint8_t *src, uint8_t *dst,
   (void)params;
 
   void *work_buffer = malloc(CX_SECURE_UNCOMPRESS_LH_WORK_SIZE);
-  if (work_buffer == nullptr) {
+  if (work_buffer == NULL) {
     nsmbw_compress_print_error(
         "Failed to allocate memory for LH decompression work buffer: %s",
         strerror(errno));
@@ -34,7 +34,7 @@ bool nsmbw_compress_lh_encode(const uint8_t *src, uint8_t *dst,
                               size_t src_length, size_t *dst_length,
                               const struct nsmbw_compress_parameters *params) {
   void *work_buffer = malloc(CX_COMPRESS_LH_WORK_SIZE + src_length * 3);
-  if (work_buffer == nullptr) {
+  if (work_buffer == NULL) {
     nsmbw_compress_print_error(
         "Failed to allocate memory for LH compression work buffer: %s",
         strerror(errno));

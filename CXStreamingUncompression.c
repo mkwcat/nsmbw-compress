@@ -6,58 +6,54 @@
 
 #include "CXInternal.h"
 #include "cx.h"
-#include "decomp.h"
 #include "macros.h" // ROUND_DOWN_PTR
-#include "types.h"
+#include <stdint.h>
 
 /*******************************************************************************
  * types
  */
 
 struct BitReader {
-  byte_t const *data;   // size 0x04, offset 0x00
-  unk4_t byteOffset;          // size 0x04, offset 0x04
-  unk4_t unsigned value; // size 0x04, offset 0x08
-  unk4_t unsigned bit; // size 0x04, offset 0x0c
-  unk4_t fullSize;          // size 0x04, offset 0x0c
+  uint8_t const *data; // size 0x04, offset 0x00
+  int byteOffset;      // size 0x04, offset 0x04
+  int unsigned value;  // size 0x04, offset 0x08
+  int unsigned bit;    // size 0x04, offset 0x0c
+  int fullSize;        // size 0x04, offset 0x0c
 }; // size 0x14?
 
 struct RCInfo {
-  unk4_t unsigned *at_0x00; // size 0x04, offset 0x00
-  unk4_t unsigned *at_0x04; // size 0x04, offset 0x04
-  unk4_t unsigned at_0x08;  // size 0x04, offset 0x08
-  unk1_t unsigned at_0x0c;  // size 0x04, offset 0x0c
+  int unsigned *at_0x00; // size 0x04, offset 0x00
+  int unsigned *at_0x04; // size 0x04, offset 0x04
+  int unsigned at_0x08;  // size 0x04, offset 0x08
+  uint8_t at_0x0c;       // size 0x04, offset 0x0c
 }; // size 0x10?
 
 struct RCState {
-  unk4_t at_0x00;          // size 0x04, offset 0x00
-  unk4_t unsigned at_0x04; // size 0x04, offset 0x04
-  unk4_t at_0x08;          // size 0x04, offset 0x08
-  unk1_t unsigned at_0x0c; // size 0x04, offset 0x0c
-  byte_t pad0_[3];         // alignment?
-  unk4_t at_0x10;          // size 0x04, offset 0x10
+  int at_0x00;          // size 0x04, offset 0x00
+  int unsigned at_0x04; // size 0x04, offset 0x04
+  int at_0x08;          // size 0x04, offset 0x08
+  uint8_t at_0x0c;      // size 0x04, offset 0x0c
+  uint8_t pad0_[3];     // alignment?
+  int at_0x10;          // size 0x04, offset 0x10
 }; // size 0x14?
 
 /*******************************************************************************
  * local function declarations
  */
 
-static inline unk_t CXiReadHeader(u8 *, unk4_t signed *, byte_t const *, unk_t,
-                                  unk_t);
+static inline int CXiReadHeader(uint8_t *, int *, uint8_t const *, int, int);
 
-static inline unk_t signed BitReader_Read(struct BitReader *bitReader,
-                                          unk1_t unsigned);
-static inline unk8_t BitReader_ReadEx(struct BitReader *bitReader,
-                                      unk1_t unsigned);
+static inline int BitReader_Read(struct BitReader *bitReader, uint8_t);
+static inline long long BitReader_ReadEx(struct BitReader *bitReader, uint8_t);
 
-static inline byte_t *GetNextNode(byte_t *, unk_t);
+static inline uint8_t *GetNextNode(uint8_t *, int);
 
-static inline void RCInitInfo_(struct RCInfo *rcInfo, unk1_t unsigned);
+static inline void RCInitInfo_(struct RCInfo *rcInfo, uint8_t);
 static inline void RCInitState_(struct RCState *rcState);
-static void RCAddCount_(struct RCInfo *rcInfo, u16);
-static u16 RCSearch_(struct RCInfo *rcInfo, unk_t, unk_t unsigned, unk_t);
-static u16 RCGetData_(byte_t const *stream, struct RCInfo *rcInfo,
-                      struct RCState *rcState, unk_t, unk_t *);
+static void RCAddCount_(struct RCInfo *rcInfo, uint16_t);
+static uint16_t RCSearch_(struct RCInfo *rcInfo, int, unsigned, int);
+static uint16_t RCGetData_(uint8_t const *stream, struct RCInfo *rcInfo,
+                           struct RCState *rcState, int, int *);
 
 static inline void LRCIntro_(CXUncompContextLRC *context, struct RCInfo *info1,
                              struct RCInfo *info2, struct RCState *state);
@@ -68,7 +64,7 @@ static inline void LRCFin_(CXUncompContextLRC *context, struct RCInfo *info1,
  * functions
  */
 
-void CXInitUncompContextRL(CXUncompContextRL *context, byte_t *param_2) {
+void CXInitUncompContextRL(CXUncompContextRL *context, uint8_t *param_2) {
   context->at_0x00 = param_2;
   context->at_0x04 = 0;
   context->at_0x0e = 0;
@@ -77,7 +73,7 @@ void CXInitUncompContextRL(CXUncompContextRL *context, byte_t *param_2) {
   context->at_0x08 = 0;
 }
 
-void CXInitUncompContextLZ(CXUncompContextLZ *context, byte_t *param_2) {
+void CXInitUncompContextLZ(CXUncompContextLZ *context, uint8_t *param_2) {
   context->at_0x00 = param_2;
   context->at_0x04 = 0;
   context->at_0x11 = 0;
@@ -89,8 +85,7 @@ void CXInitUncompContextLZ(CXUncompContextLZ *context, byte_t *param_2) {
   context->at_0x08 = 0;
 }
 
-void CXInitUncompContextHuffman(CXUncompContextHuffman *context,
-                                unk4_t *param_2) {
+void CXInitUncompContextHuffman(CXUncompContextHuffman *context, int *param_2) {
   context->at_0x00 = param_2;
   context->at_0x04 = 0;
   context->at_0x1c = 0;
@@ -105,8 +100,8 @@ void CXInitUncompContextHuffman(CXUncompContextHuffman *context,
 }
 
 CXStreamingResult CXReadUncompRL(CXUncompContextRL *context,
-                                 void const *compressed, u32 size) {
-  byte_t const *src = compressed;
+                                 void const *compressed, uint32_t size) {
+  uint8_t const *src = compressed;
 
   if (context->at_0x0f) {
     if (context->at_0x0f == 8) {
@@ -118,8 +113,8 @@ CXStreamingResult CXReadUncompRL(CXUncompContextRL *context,
         return CXSTREAM_EBADTYPE;
     }
 
-    unk_t a = CXiReadHeader(&context->at_0x0f, &context->at_0x04, src, size,
-                            context->at_0x08);
+    int a = CXiReadHeader(&context->at_0x0f, &context->at_0x04, src, size,
+                          context->at_0x08);
 
     src += a;
     size -= a;
@@ -141,7 +136,7 @@ CXStreamingResult CXReadUncompRL(CXUncompContextRL *context,
           return context->at_0x04;
       }
     } else if (context->at_0x0c) {
-      byte_t b = *src++;
+      uint8_t b = *src++;
       --size;
 
       while (context->at_0x0c) {
@@ -186,10 +181,9 @@ CXStreamingResult CXReadUncompRL(CXUncompContextRL *context,
   return CXSTREAM_ESUCCESS;
 }
 
-static unk_t CXiReadHeader(u8 *param_1, unk4_t signed *param_2,
-                           byte_t const *param_3, unk_t param_4,
-                           unk_t param_5) {
-  unk_t a = 0;
+static int CXiReadHeader(uint8_t *param_1, int *param_2, uint8_t const *param_3,
+                         int param_4, int param_5) {
+  int a = 0;
 
   while (*param_1) {
     --*param_1;
@@ -217,8 +211,8 @@ static unk_t CXiReadHeader(u8 *param_1, unk4_t signed *param_2,
 }
 
 CXStreamingResult CXReadUncompLZ(CXUncompContextLZ *context,
-                                 void const *compressed, u32 size) {
-  byte_t const *src = compressed;
+                                 void const *compressed, uint32_t size) {
+  uint8_t const *src = compressed;
 
   if (context->at_0x13) {
     if (context->at_0x13 == 8) {
@@ -232,8 +226,8 @@ CXStreamingResult CXReadUncompLZ(CXUncompContextLZ *context,
         return CXSTREAM_EBADTYPE;
     }
 
-    unk_t a = CXiReadHeader(&context->at_0x13, &context->at_0x04, src, size,
-                            context->at_0x08);
+    int a = CXiReadHeader(&context->at_0x13, &context->at_0x04, src, size,
+                          context->at_0x08);
 
     src += a;
     size -= a;
@@ -297,7 +291,7 @@ CXStreamingResult CXReadUncompLZ(CXUncompContextLZ *context,
           return context->at_0x04;
       }
 
-      unk_t long a = (context->at_0x0c & 0x0f) << 8;
+      int long a = (context->at_0x0c & 0x0f) << 8;
       context->at_0x0c >>= 4;
 
       a = (a | *src++) + 1;
@@ -342,8 +336,8 @@ out:
 }
 
 CXStreamingResult CXReadUncompHuffman(CXUncompContextHuffman *context,
-                                      void const *compressed, u32 size) {
-  byte_t const *src = compressed;
+                                      void const *compressed, uint32_t size) {
+  uint8_t const *src = compressed;
 
   if (context->at_0x1d) {
     if (context->at_0x1d == 8) {
@@ -357,8 +351,8 @@ CXStreamingResult CXReadUncompHuffman(CXUncompContextHuffman *context,
         return CXSTREAM_EBADTYPE;
     }
 
-    unk_t a = CXiReadHeader(&context->at_0x1d, &context->at_0x04, src, size,
-                            context->at_0x08);
+    int a = CXiReadHeader(&context->at_0x1d, &context->at_0x04, src, size,
+                          context->at_0x08);
 
     src += a;
     size -= a;
@@ -402,8 +396,8 @@ CXStreamingResult CXReadUncompHuffman(CXUncompContextHuffman *context,
     }
 
     while (context->at_0x1a) {
-      unk_t b = context->at_0x10 >> 31;
-      unk_t c = (*(byte_t volatile *)context->at_0x0c << b) & 0x80; // ?
+      int b = context->at_0x10 >> 31;
+      int c = (*(uint8_t volatile *)context->at_0x0c << b) & 0x80; // ?
 
       context->at_0x0c = GetNextNode(context->at_0x0c, b);
       context->at_0x10 <<= 1;
@@ -443,12 +437,12 @@ out:
   return CXSTREAM_ESUCCESS;
 }
 
-static byte_t *GetNextNode(byte_t *param_1, unk_t param_2) {
-  return (byte_t *)ROUND_DOWN_PTR(param_1, 2) + (((*param_1 & 0x3f) + 1) << 1) +
-         param_2;
+static uint8_t *GetNextNode(uint8_t *param_1, int param_2) {
+  return (uint8_t *)ROUND_DOWN_PTR(param_1, 2) +
+         (((*param_1 & 0x3f) + 1) << 1) + param_2;
 }
 
-void CXInitUncompContextLH(CXUncompContextLH *context, byte_t *param_2) {
+void CXInitUncompContextLH(CXUncompContextLH *context, uint8_t *param_2) {
   context->at_0x000 = param_2;
   context->at_0x004 = -1;
   context->at_0x88c = context->at_0x00c + 1;
@@ -463,8 +457,8 @@ void CXInitUncompContextLH(CXUncompContextLH *context, byte_t *param_2) {
 }
 
 CXStreamingResult CXReadUncompLH(CXUncompContextLH *context,
-                                 void const *compressed, u32 size) {
-  byte_t const *src = compressed;
+                                 void const *compressed, uint32_t size) {
+  uint8_t const *src = compressed;
 
   struct BitReader bitReader;
   bitReader.data = src;
@@ -473,7 +467,7 @@ CXStreamingResult CXReadUncompLH(CXUncompContextLH *context,
   bitReader.bit = context->at_0x8a0;
 
   while (context->at_0x8a7) {
-    unk8_t signed a = BitReader_ReadEx(&bitReader, 32);
+    long long a = BitReader_ReadEx(&bitReader, 32);
 
     if (a < 0)
       goto end;
@@ -481,7 +475,7 @@ CXStreamingResult CXReadUncompLH(CXUncompContextLH *context,
     context->at_0x8a7 -= 4;
 
     if (context->at_0x8a7 == 4) {
-      byte4_t stat = CXiConvertEndian32_(a);
+      uint32_t stat = CXiConvertEndian32_(a);
 
       if ((stat & CX_COMPRESSION_TYPE_MASK) != CX_COMPRESSION_TYPE_LH)
         return CXSTREAM_EBADTYPE;
@@ -510,7 +504,7 @@ CXStreamingResult CXReadUncompLH(CXUncompContextLH *context,
     context->at_0x004 = context->at_0x008;
   }
 
-  unk_t b;
+  int b;
 
   if (context->at_0x890 < 0) {
     b = BitReader_Read(&bitReader, 16);
@@ -578,8 +572,8 @@ CXStreamingResult CXReadUncompLH(CXUncompContextLH *context,
   if (!CXiLHVerifyTable(context->at_0x80c, 5))
     return CXSTREAM_EBADTABLE;
 
-  u16 *c = context->at_0x88c;
-  unk2_t unsigned d = context->at_0x8a4;
+  uint16_t *c = context->at_0x88c;
+  uint16_t d = context->at_0x8a4;
 
   while (context->at_0x004 > 0) {
     if (!d) {
@@ -592,8 +586,8 @@ CXStreamingResult CXReadUncompLH(CXUncompContextLH *context,
           goto end;
         }
 
-        unk1_t unsigned e = b & 1;
-        unk4_t f = (((*c & 0x7f) + 1) << 1) + e;
+        uint8_t e = b & 1;
+        int f = (((*c & 0x7f) + 1) << 1) + e;
 
         if (*c & (0x100 >> e)) {
           c = ROUND_DOWN_PTR(c, 4);
@@ -617,8 +611,8 @@ CXStreamingResult CXReadUncompLH(CXUncompContextLH *context,
       continue;
     }
 
-    unk2_t unsigned g;
-    unk2_t unsigned h = (d & 0xff) + 3;
+    uint16_t g;
+    uint16_t h = (d & 0xff) + 3;
 
     if (context->at_0x8a6 < 0) {
       while (true) {
@@ -630,8 +624,8 @@ CXStreamingResult CXReadUncompLH(CXUncompContextLH *context,
           goto end;
         }
 
-        unk1_t unsigned l = b & 1;
-        unk4_t m = (((*c & 0x07) + 1) << 1) + l;
+        uint8_t l = b & 1;
+        int m = (((*c & 0x07) + 1) << 1) + l;
 
         if (*c & (0x10 >> l)) {
           c = ROUND_DOWN_PTR(c, 4);
@@ -692,8 +686,7 @@ end:
   return context->at_0x004;
 }
 
-static unk_t signed BitReader_Read(struct BitReader *bitReader,
-                                   unk1_t unsigned param_2) {
+static int BitReader_Read(struct BitReader *bitReader, uint8_t param_2) {
   while (bitReader->bit < param_2) {
     if (!bitReader->byteOffset)
       return -1;
@@ -705,17 +698,17 @@ static unk_t signed BitReader_Read(struct BitReader *bitReader,
     bitReader->bit += 8;
   }
 
-  unk_t signed a = ((1 << param_2) - 1) &
-                   (bitReader->value >> (bitReader->bit - param_2));
+  int a =
+      ((1 << param_2) - 1) & (bitReader->value >> (bitReader->bit - param_2));
 
   bitReader->bit -= param_2;
 
   return a;
 }
 
-static unk8_t BitReader_ReadEx(struct BitReader *bitReader,
-                               unk1_t unsigned param_2) {
-  unk1_t unsigned a = 0;
+static long long BitReader_ReadEx(struct BitReader *bitReader,
+                                  uint8_t param_2) {
+  uint8_t a = 0;
 
   while (bitReader->bit < param_2) {
     if (!bitReader->byteOffset)
@@ -731,8 +724,8 @@ static unk8_t BitReader_ReadEx(struct BitReader *bitReader,
     bitReader->bit += 8;
   }
 
-  unk8_t b = bitReader->value;
-  b |= (unk8_t)a << 32;
+  long long b = bitReader->value;
+  b |= (long long)a << 32;
   b = (b >> (bitReader->bit - param_2)) & ((1 << param_2) - 1);
 
   bitReader->bit -= param_2;
@@ -740,9 +733,9 @@ static unk8_t BitReader_ReadEx(struct BitReader *bitReader,
   return b;
 }
 
-static void RCInitInfo_(struct RCInfo *rcInfo, unk1_t unsigned param_2) {
-  u32 i;
-  unk_t a = 1 << param_2;
+static void RCInitInfo_(struct RCInfo *rcInfo, uint8_t param_2) {
+  uint32_t i;
+  int a = 1 << param_2;
 
   rcInfo->at_0x0c = param_2;
 
@@ -762,9 +755,9 @@ static void RCInitState_(struct RCState *rcState) {
   rcState->at_0x10 = 0;
 }
 
-static void RCAddCount_(struct RCInfo *rcInfo, u16 param_2) {
-  u32 i;
-  unk_t unsigned a = 1 << rcInfo->at_0x0c;
+static void RCAddCount_(struct RCInfo *rcInfo, uint16_t param_2) {
+  uint32_t i;
+  unsigned a = 1 << rcInfo->at_0x0c;
 
   ++rcInfo->at_0x00[param_2];
   ++rcInfo->at_0x08;
@@ -790,16 +783,16 @@ static void RCAddCount_(struct RCInfo *rcInfo, u16 param_2) {
   }
 }
 
-static u16 RCSearch_(struct RCInfo *rcInfo, unk_t param_2,
-                     unk_t unsigned param_3, unk_t param_4) {
-  unk_t a = 1 << rcInfo->at_0x0c;
-  unk_t b = param_2 - param_4;
-  unk_t unsigned c = param_3 / rcInfo->at_0x08;
-  unk_t unsigned d = b / c;
-  unk_t unsigned e = 0;
-  unk_t f = a - 1;
+static uint16_t RCSearch_(struct RCInfo *rcInfo, int param_2, unsigned param_3,
+                          int param_4) {
+  int a = 1 << rcInfo->at_0x0c;
+  int b = param_2 - param_4;
+  unsigned c = param_3 / rcInfo->at_0x08;
+  unsigned d = b / c;
+  unsigned e = 0;
+  int f = a - 1;
 
-  unk_t g;
+  int g;
   while (e < f) {
     g = (e + f) >> 1;
 
@@ -816,15 +809,15 @@ static u16 RCSearch_(struct RCInfo *rcInfo, unk_t param_2,
   return g;
 }
 
-static u16 RCGetData_(byte_t const *stream, struct RCInfo *rcInfo,
-                      struct RCState *rcState, unk_t param_4, unk_t *param_5) {
-  u16 a =
+static uint16_t RCGetData_(uint8_t const *stream, struct RCInfo *rcInfo,
+                           struct RCState *rcState, int param_4, int *param_5) {
+  uint16_t a =
       RCSearch_(rcInfo, rcState->at_0x08, rcState->at_0x04, rcState->at_0x00);
-  unk_t b = 0;
+  int b = 0;
 
   // arbitrary block
   {
-    unk_t c = rcState->at_0x04 / rcInfo->at_0x08;
+    int c = rcState->at_0x04 / rcInfo->at_0x08;
 
     rcState->at_0x00 += c * rcInfo->at_0x04[a];
     rcState->at_0x04 = c * rcInfo->at_0x00[a];
@@ -876,12 +869,11 @@ static void LRCFin_(CXUncompContextLRC *context, struct RCInfo *info1,
   context->at_0x901c = state->at_0x00;
   context->at_0x9014 = state->at_0x04;
   context->at_0x9018 = state->at_0x08;
-  context->at_0x9024 = (u8)state->at_0x0c;
+  context->at_0x9024 = (uint8_t)state->at_0x0c;
   context->at_0x9020 = state->at_0x10;
 }
 
-void CXInitUncompContextLRC(CXUncompContextLRC *context,
-                            unk1_t unsigned *param_2) {
+void CXInitUncompContextLRC(CXUncompContextLRC *context, uint8_t *param_2) {
   struct RCInfo info1;
   struct RCInfo info2;
   struct RCState state;
@@ -903,8 +895,8 @@ void CXInitUncompContextLRC(CXUncompContextLRC *context,
 }
 
 CXStreamingResult CXReadUncompLRC(CXUncompContextLRC *context,
-                                  void const *compressed, u32 size) {
-  byte_t const *src = compressed;
+                                  void const *compressed, uint32_t size) {
+  uint8_t const *src = compressed;
 
   struct RCInfo rcInfo1;
   struct RCInfo rcInfo2;
@@ -921,8 +913,8 @@ CXStreamingResult CXReadUncompLRC(CXUncompContextLRC *context,
         return CXSTREAM_EBADTYPE;
     }
 
-    unk_t a = CXiReadHeader(&context->at_0x9028, &context->at_0x0004, src, size,
-                            context->at_0x0008);
+    int a = CXiReadHeader(&context->at_0x9028, &context->at_0x0004, src, size,
+                          context->at_0x0008);
 
     src += a;
     size -= a;
@@ -945,8 +937,8 @@ CXStreamingResult CXReadUncompLRC(CXUncompContextLRC *context,
 
   while (context->at_0x0004 > 0) {
     if (!context->at_0x9026) {
-      unk_t b;
-      unk2_t unsigned c = RCGetData_(src, &rcInfo1, &rcState, size, &b);
+      int b;
+      uint16_t c = RCGetData_(src, &rcInfo1, &rcState, size, &b);
 
       if (c < 0x100) {
         *context->at_0x0000++ = c;
@@ -965,8 +957,8 @@ CXStreamingResult CXReadUncompLRC(CXUncompContextLRC *context,
     }
 
     if (context->at_0x9026) {
-      unk_t d;
-      unk2_t unsigned e = RCGetData_(src, &rcInfo2, &rcState, size, &d) + 1;
+      int d;
+      uint16_t e = RCGetData_(src, &rcInfo2, &rcState, size, &d) + 1;
 
       if (context->at_0x9026 > context->at_0x0004) {
         if (!context->at_0x0008)

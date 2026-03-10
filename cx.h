@@ -5,7 +5,7 @@
  * headers
  */
 
-#include "types.h"
+#include <stdint.h>
 
 /*******************************************************************************
  * types
@@ -15,7 +15,7 @@
 extern "C" {
 #endif
 
-typedef byte_t CXCompressionType;
+typedef uint8_t CXCompressionType;
 enum CXCompressionType_et {
   CX_COMPRESSION_TYPE_LEMPEL_ZIV = 0x10,
   CX_COMPRESSION_TYPE_HUFFMAN = 0x20,
@@ -29,9 +29,9 @@ enum CXCompressionType_et {
 
 typedef struct CXCompressionHeader {
   CXCompressionType type; // size 0x01, offset 0x00
-  byte_t stat; // size 0x01, offset 0x01 // Meaning changes depending on type
+  uint8_t stat; // size 0x01, offset 0x01 // Meaning changes depending on type
   /* 2 bytes padding */
-  u32 size;            // size 0x04, offset 0x04
+  uint32_t size;       // size 0x04, offset 0x04
 } CXCompressionHeader; // size 0x08
 
 /*******************************************************************************
@@ -41,10 +41,10 @@ typedef struct CXCompressionHeader {
 CXCompressionHeader CXGetCompressionHeader(void const *compressed);
 
 static inline int CXGetCompressionType(void const *compressed) {
-  return *(byte_t *)compressed & CX_COMPRESSION_TYPE_MASK;
+  return *(uint8_t *)compressed & CX_COMPRESSION_TYPE_MASK;
 }
 
-u32 CXGetUncompressedSize(void const *compressed);
+uint32_t CXGetUncompressedSize(void const *compressed);
 
 #ifdef __cplusplus
 }

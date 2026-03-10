@@ -8,10 +8,9 @@
  */
 
 #include "CXUncompression.h"
-#include "decomp.h"
-#include "types.h"
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 /*******************************************************************************
  * macros
@@ -35,10 +34,10 @@ extern "C" {
  * functions
  */
 
-_Bool CXiVerifyHuffmanTable_(void const *, u8);
-_Bool CXiLHVerifyTable(void const *, u8);
+_Bool CXiVerifyHuffmanTable_(void const *, uint8_t);
+_Bool CXiLHVerifyTable(void const *, uint8_t);
 
-static inline byte4_t CXiConvertEndian_(byte4_t x) {
+static inline uint32_t CXiConvertEndian_(uint32_t x) {
 #if (defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__) ||  \
     defined(_MSC_VER)
   return x;
@@ -48,7 +47,7 @@ static inline byte4_t CXiConvertEndian_(byte4_t x) {
 #endif
 }
 
-static inline byte2_t CXiConvertEndian16_(byte2_t x) {
+static inline uint16_t CXiConvertEndian16_(uint16_t x) {
 #if (defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__) ||  \
     defined(_MSC_VER)
   return x;

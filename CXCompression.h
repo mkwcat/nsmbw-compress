@@ -5,7 +5,8 @@
  * headers
  */
 
-#include "types.h"
+#include <stdbool.h>
+#include <stdint.h>
 
 /*******************************************************************************
  * functions
@@ -15,15 +16,15 @@
 extern "C" {
 #endif
 
-u32 CXCompressLZImpl(byte_t const *srcp, u32 size, byte_t *dstp, void *work,
-                     BOOL);
-u32 CXCompressRL(byte_t const *srcp, u32 size, byte_t *dstp);
-u32 CXCompressHuffman(byte_t const *srcp, u32 size, byte_t *dstp,
-                      u8 huffBitSize, void *work);
+uint32_t CXCompressLZImpl(uint8_t const *srcp, uint32_t size, uint8_t *dstp,
+                          void *work, bool);
+uint32_t CXCompressRL(uint8_t const *srcp, uint32_t size, uint8_t *dstp);
+uint32_t CXCompressHuffman(uint8_t const *srcp, uint32_t size, uint8_t *dstp,
+                           uint8_t huffBitSize, void *work);
 
 // Added
-u32 CXCompressLH(byte_t const *srcp, u32 size, byte_t *dstp, byte_t *tmp_dstp,
-                 void *work);
+uint32_t CXCompressLH(uint8_t const *srcp, uint32_t size, uint8_t *dstp,
+                      uint8_t *tmp_dstp, void *work);
 
 #define CX_COMPRESS_DST_SCALE 4
 
@@ -44,10 +45,10 @@ u32 CXCompressLH(byte_t const *srcp, u32 size, byte_t *dstp, byte_t *tmp_dstp,
 #define CX_COMPRESS_LH_LZ_DETAIL_SIZE 0x8000
 
 struct CXiCompressLHWork {
-  _Alignas(4) byte_t huffLWork[CX_COMPRESS_HUFFMAN_WORK_SIZE(9)];
-  _Alignas(4) byte_t huffRWork[CX_COMPRESS_HUFFMAN_WORK_SIZE(5)];
+  _Alignas(4) uint8_t huffLWork[CX_COMPRESS_HUFFMAN_WORK_SIZE(9)];
+  _Alignas(4) uint8_t huffRWork[CX_COMPRESS_HUFFMAN_WORK_SIZE(5)];
 
-  _Alignas(4) byte_t
+  _Alignas(4) uint8_t
       lzWork[CX_COMPRESS_LZ_WORK_SIZE_DETAIL(CX_COMPRESS_LH_LZ_DETAIL_SIZE)];
 };
 
