@@ -21,7 +21,7 @@ enum nsmbw_compress_type {
 struct nsmbw_compress_parameters {
   uint8_t huff_bit_size;
   uint8_t filter_diff_size;
-  bool lz77_extended;
+  bool lz_extended;
 };
 
 typedef bool (*nsmbw_compress_function)(

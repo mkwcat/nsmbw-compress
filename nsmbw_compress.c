@@ -118,12 +118,12 @@ static const struct nsmbw_compress_argument arguments[] = {
     },
     {
         .short_name = 'l',
-        .long_name = "old-lz77",
-        .long_name_length = sizeof("old-lz77") - 1,
-        .description = "Use the older low-efficiency mode of LZ77",
+        .long_name = "old-lz11",
+        .long_name_length = sizeof("old-lz11") - 1,
+        .description = "Use the older low-efficiency mode of LZ11",
         .type = nsmbw_compress_argument_type_bool,
         .index = 5,
-#define argument_index_old_lz77 5
+#define argument_index_old_lz11 5
     },
     {
         .short_name = 'd',
@@ -406,8 +406,7 @@ static bool parse_arguments(int argc, const char *const *argv) {
 
 static bool get_uncompress_info(const void *input_data, size_t input_size,
                                 size_t *expanded_size,
-                                enum nsmbw_compress_type *compression_type,
-                                bool *lz77_extended) {
+                                enum nsmbw_compress_type *compression_type) {
   if (input_size < 4) {
     nsmbw_compress_print_error(
         "Input file is too small to be a valid compressed file");
@@ -431,30 +430,55 @@ static bool get_uncompress_info(const void *input_data, size_t input_size,
   }
 
   CXCompressionType cx_type = header & CX_COMPRESSION_TYPE_MASK;
+  uint8_t cx_stat = header & 0x0F;
   switch (cx_type) {
   case CX_COMPRESSION_TYPE_LEMPEL_ZIV:
     *compression_type = nsmbw_compress_type_lz;
-    *lz77_extended = false;
-    break;
-  case CX_COMPRESSION_TYPE_LEMPEL_ZIV | 0x1:
-    *compression_type = nsmbw_compress_type_lz;
-    *lz77_extended = true;
+    if (cx_stat != 0 && cx_stat != 1) {
+      nsmbw_compress_print_error(
+          "Input file has unrecognized LZ compression option: %d", cx_stat);
+      return false;
+    }
     break;
   case CX_COMPRESSION_TYPE_HUFFMAN:
     *compression_type = nsmbw_compress_type_huff;
+    if (cx_stat != 4 && cx_stat != 8) {
+      nsmbw_compress_print_error(
+          "Input file has unrecognized Huffman bit size: %d", cx_stat);
+      return false;
+    }
     break;
   case CX_COMPRESSION_TYPE_RUN_LENGTH:
     *compression_type = nsmbw_compress_type_rl;
+    if (cx_stat != 0) {
+      nsmbw_compress_print_warning(
+          "Input file specifies non-zero option for RL compression: %d",
+          cx_stat);
+    }
     break;
   case CX_COMPRESSION_TYPE_LH:
     *compression_type = nsmbw_compress_type_lh;
+    if (cx_stat != 0) {
+      nsmbw_compress_print_warning(
+          "Input file specifies non-zero option for LH compression: %d",
+          cx_stat);
+    }
     break;
   case CX_COMPRESSION_TYPE_LRC:
     *compression_type = nsmbw_compress_type_lrc;
+    if (cx_stat != 0) {
+      nsmbw_compress_print_warning(
+          "Input file specifies non-zero option for LRC compression: %d",
+          cx_stat);
+    }
     break;
   case CX_COMPRESSION_TYPE_FILTER_DIFF:
-  case CX_COMPRESSION_TYPE_FILTER_DIFF | 0x1:
     *compression_type = nsmbw_compress_type_filter_diff;
+    if (cx_stat != 0 && cx_stat != 1) {
+      nsmbw_compress_print_warning("Input file has unrecognized filter-diff "
+                                   "size flag (%d), assuming 16-bit filter",
+                                   cx_stat);
+    }
     break;
   default:
     nsmbw_compress_print_error(
@@ -463,6 +487,24 @@ static bool get_uncompress_info(const void *input_data, size_t input_size,
   }
 
   *expanded_size = header >> 8;
+  if (*expanded_size == 0) {
+    if (cx_type == CX_COMPRESSION_TYPE_FILTER_DIFF) {
+      nsmbw_compress_print_error(
+          "Invalid zero size in filter-diff input file header");
+      return false;
+    }
+    // Size is extended to 32 bits
+    if (input_size < 8) {
+      nsmbw_compress_print_error(
+          "Input file ended prematurely while reading extended size");
+      return false;
+    }
+    *expanded_size = nsmbw_compress_util_read_le_u32(input_data, 4);
+    if (*expanded_size == 0) {
+      nsmbw_compress_print_error("Invalid zero size in input file header");
+      return false;
+    }
+  }
   return true;
 }
 
@@ -476,16 +518,15 @@ static int main_uncompress(const void *input_file, size_t input_file_size,
     nsmbw_compress_print_warning(
         "--bitsize has no effect when --uncomp is specified");
   }
-  if (argument_specified[argument_index_old_lz77]) {
+  if (argument_specified[argument_index_old_lz11]) {
     nsmbw_compress_print_warning(
-        "--old-lz77 has no effect when --uncomp is specified");
+        "--old-lz11 has no effect when --uncomp is specified");
   }
 
   size_t expanded_size;
-  bool lz77_extended;
   enum nsmbw_compress_type compression_type;
   if (!get_uncompress_info(input_file, input_file_size, &expanded_size,
-                           &compression_type, &lz77_extended)) {
+                           &compression_type)) {
     return EXIT_FAILURE;
   }
 
@@ -637,9 +678,9 @@ static int main_compress(const void *input_file, size_t input_file_size,
   }
 
   struct nsmbw_compress_parameters params = {
-      .lz77_extended =
-          argument_specified[argument_index_old_lz77]
-              ? !argument_values[argument_index_old_lz77].bool_value
+      .lz_extended =
+          argument_specified[argument_index_old_lz11]
+              ? !argument_values[argument_index_old_lz11].bool_value
               : true,
       .huff_bit_size = argument_specified[argument_index_bitsize]
                            ? argument_values[argument_index_bitsize].int_value

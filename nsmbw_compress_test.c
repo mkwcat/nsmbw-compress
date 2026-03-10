@@ -54,7 +54,7 @@ static void run_compression_tests() {
     struct nsmbw_compress_parameters params = {
         .huff_bit_size = 4,
         .filter_diff_size = 16,
-        .lz77_extended = true,
+        .lz_extended = true,
     };
     if (!encode_func(generated_uncompressed_data, compressed_data, BUFFER_SIZE,
                      &compressed_size, &params)) {
