@@ -1059,9 +1059,6 @@ static uint32_t LHEncodeLZ(uint8_t const *srcp, uint32_t size, uint8_t *dstp,
     *d = b;
   }
 
-  for (i = 0; (length + i) % 4 != 0; ++i)
-    *dstp++ = 0;
-
   (void)size;
 
   return length;
@@ -1107,7 +1104,7 @@ static void BitWriter_Flush(struct BitWriter *bitWriter) {
 
 uint32_t CXCompressLH(uint8_t const *srcp, uint32_t size, uint8_t *dstp,
                       uint8_t *tmp_dstp, void *work) {
-  struct CXiCompressLHWork *lhWork = work;
+  struct CXiCompressLHWork *lh_work = work;
 
   uint32_t length;
 
@@ -1128,46 +1125,51 @@ uint32_t CXCompressLH(uint8_t const *srcp, uint32_t size, uint8_t *dstp,
   }
 
   struct HuffTable table[2];
-  HuffInitTable(&table[0], lhWork->huffLWork, 1 << 9);
-  HuffInitTable(&table[1], lhWork->huffRWork, 1 << 5);
+  HuffInitTable(&table[0], lh_work->huffLWork, 1 << 9);
+  HuffInitTable(&table[1], lh_work->huffRWork, 1 << 5);
 
-  uint32_t lz_length = LHEncodeLZ(srcp, size, tmp_dstp, lhWork, table);
-  if (!lz_length)
+  uint32_t lz_length = LHEncodeLZ(srcp, size, tmp_dstp, lh_work, table);
+  if (!lz_length) {
     return 0;
+  }
 
   uint16_t a = HuffConstructTree(table[0].at_0x00, 1 << 9);
   HuffMakeHuffTree(&table[0], a, 9);
   uint16_t b = HuffConstructTree(table[1].at_0x00, 1 << 5);
   HuffMakeHuffTree(&table[1], b, 5);
-  table[0].treeEntryCount++;
-  table[1].treeEntryCount++;
 
-  struct BitWriter bitWriter;
-  BitWriter_Init(&bitWriter, dstp);
+  struct BitWriter bit_writer;
+  BitWriter_Init(&bit_writer, dstp);
 
   // Write tables
   for (int t = 0; t < 2; ++t) {
-    const int bitSize = t ? 5 : 9;
-    const uint16_t tableSize = (table[t].treeEntryCount & ~1) << 1;
-    const uint16_t tableHeaderSize =
-        (bitSize * (table[t].treeEntryCount >> 1)) / 8;
-    if (bitSize > 8) {
-      BitWriter_Write(&bitWriter,
-                      (tableHeaderSize << 8) | (tableHeaderSize >> 8), 16);
+    const int bit_size = t ? 5 : 9;
+    struct BitWriter header_writer = bit_writer;
+    if (bit_size > 8) {
+      BitWriter_Write(&bit_writer, 0, 16);
     } else {
-      BitWriter_Write(&bitWriter, tableHeaderSize, 8);
+      BitWriter_Write(&bit_writer, 0, 8);
     }
-    for (uint16_t i = 1; i < tableSize; ++i) {
-      uint16_t treeFlags = table[t].at_0x04[i] & 0xC000;
-      uint16_t encoded = (treeFlags >> (16 - bitSize)) | table[t].at_0x04[i];
-      BitWriter_Write(&bitWriter, encoded, bitSize);
+    const uint16_t table_size = table[t].treeEntryCount << 1;
+    for (uint16_t i = 1; i < table_size; ++i) {
+      uint16_t tree_flags = table[t].at_0x04[i] & 0xC000;
+      uint16_t encoded = (tree_flags >> (16 - bit_size)) | table[t].at_0x04[i];
+      BitWriter_Write(&bit_writer, encoded, bit_size);
     }
-    BitWriter_Flush(&bitWriter);
+    BitWriter_Flush(&bit_writer);
     // Pad to 4 bytes
-    while (bitWriter.offset % 4 != 0) {
-      BitWriter_Write(&bitWriter, 0, 8);
+    while (bit_writer.offset % 4 != 0) {
+      BitWriter_Write(&bit_writer, 0, 8);
     }
-    dstp += bitWriter.offset;
+    // Write the weird way LH wants the byte count encoded
+    const uint16_t table_byte_count =
+        (bit_writer.offset - header_writer.offset) / 4 - 1;
+    if (bit_size > 8) {
+      BitWriter_Write(&header_writer,
+                      (table_byte_count << 8) | (table_byte_count >> 8), 16);
+    } else {
+      BitWriter_Write(&header_writer, table_byte_count, 8);
+    }
   }
 
   struct at0 *refs[2] = {table[0].at_0x00, table[1].at_0x00};
@@ -1176,6 +1178,9 @@ uint32_t CXCompressLH(uint8_t const *srcp, uint32_t size, uint8_t *dstp,
   for (uint32_t i = 0; i < lz_length;) {
     uint8_t flags = tmp_dstp[i++];
     for (uint8_t j = 0; j < 8; ++j) {
+      if (i >= lz_length) {
+        break;
+      }
       if (flags & 0x80) {
         uint16_t lzref_length = tmp_dstp[i++];
         uint16_t lzref_offset = tmp_dstp[i] | (tmp_dstp[i + 1] << 8);
@@ -1186,29 +1191,34 @@ uint32_t CXCompressLH(uint8_t const *srcp, uint32_t size, uint8_t *dstp,
         lzref_length |= 0x100;
 
         // Write the length using the first huffman table
-        BitWriter_Write(&bitWriter, refs[0][lzref_length].ref,
+        BitWriter_Write(&bit_writer, refs[0][lzref_length].ref,
                         refs[0][lzref_length].refSize);
         // Write number of bits needed to encode the offset with the second
         // huffman table
-        uint16_t offsetBits = CountBitsNeededToEncode(lzref_offset);
-        BitWriter_Write(&bitWriter, refs[1][offsetBits].ref,
-                        refs[1][offsetBits].refSize);
+        uint16_t offset_bits = CountBitsNeededToEncode(lzref_offset);
+        BitWriter_Write(&bit_writer, refs[1][offset_bits].ref,
+                        refs[1][offset_bits].refSize);
         // Then write the offset itself with that number of bits
-        if (offsetBits > 1)
-          BitWriter_Write(&bitWriter,
-                          lzref_offset & ((1 << (offsetBits - 1)) - 1),
-                          offsetBits - 1);
+        if (offset_bits > 1) {
+          BitWriter_Write(&bit_writer,
+                          lzref_offset & ((1 << (offset_bits - 1)) - 1),
+                          offset_bits - 1);
+        }
       } else {
         uint8_t a = tmp_dstp[i++];
-        BitWriter_Write(&bitWriter, refs[0][a].ref, refs[0][a].refSize);
+        BitWriter_Write(&bit_writer, refs[0][a].ref, refs[0][a].refSize);
       }
       flags <<= 1;
     }
   }
 
-  BitWriter_Flush(&bitWriter);
+  BitWriter_Flush(&bit_writer);
+  // Pad to 4 bytes
+  while (bit_writer.offset % 4 != 0) {
+    BitWriter_Write(&bit_writer, 0, 8);
+  }
 
-  length += bitWriter.offset;
+  length += bit_writer.offset;
 
   return length;
 }
