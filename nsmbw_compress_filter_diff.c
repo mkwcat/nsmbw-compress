@@ -33,7 +33,7 @@ bool nsmbw_compress_filter_diff_encode(
   uint32_t init_value = CX_COMPRESSION_TYPE_FILTER_DIFF |
                         (params->filter_diff_size == 8 ? 0x0 : 0x1) |
                         (src_length << 8);
-  nsmbw_compress_util_write_le_u32(dst, 0, init_value);
+  ncutil_write_le_u32(dst, 0, init_value);
 
   size_t dst_offset = sizeof(uint32_t);
   uint32_t sum = 0;
@@ -48,13 +48,13 @@ bool nsmbw_compress_filter_diff_encode(
     for (i = 0; i < src_length; i += sizeof(uint16_t)) {
       uint16_t cur;
       if (i + sizeof(uint16_t) <= src_length) {
-        cur = nsmbw_compress_util_read_le_u16(src, i);
+        cur = ncutil_read_le_u16(src, i);
       } else {
         // Handle odd final byte by treating it as a little-endian 16-bit value
         // with the high byte set to 0
         cur = src[i];
       }
-      nsmbw_compress_util_write_le_u16(dst, i + dst_offset, cur - sum);
+      ncutil_write_le_u16(dst, i + dst_offset, cur - sum);
       sum = cur;
     }
   }

@@ -413,7 +413,7 @@ static bool get_uncompress_info(const void *input_data, size_t input_size,
     return false;
   }
 
-  uint32_t header = nsmbw_compress_util_read_le_u32(input_data, 0);
+  uint32_t header = ncutil_read_le_u32(input_data, 0);
 
   // Check for "Yaz0" or "Yaz1"
   static const uint32_t szs_magic =
@@ -425,7 +425,7 @@ static bool get_uncompress_info(const void *input_data, size_t input_size,
           "Input file is too small to be a valid SZS/Yaz0 file");
       return false;
     }
-    *expanded_size = nsmbw_compress_util_read_be_u32(input_data, 4);
+    *expanded_size = ncutil_read_be_u32(input_data, 4);
     return true;
   }
 
@@ -499,7 +499,7 @@ static bool get_uncompress_info(const void *input_data, size_t input_size,
           "Input file ended prematurely while reading extended size");
       return false;
     }
-    *expanded_size = nsmbw_compress_util_read_le_u32(input_data, 4);
+    *expanded_size = ncutil_read_le_u32(input_data, 4);
     if (*expanded_size == 0) {
       nsmbw_compress_print_error("Invalid zero size in input file header");
       return false;

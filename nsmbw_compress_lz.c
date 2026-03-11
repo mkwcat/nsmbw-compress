@@ -12,11 +12,126 @@ bool nsmbw_compress_lz_decode(const uint8_t *src, uint8_t *dst,
                               const struct nsmbw_compress_parameters *params) {
   (void)params;
 
-  CXSecureResult result = CXSecureUncompressLZ(src, src_length, dst);
-  if (result != CX_SECURE_ERR_OK) {
-    nsmbw_compress_print_cx_error(true, result);
+  const uint32_t header = ncutil_read_le_u32(src, 0);
+  const CXCompressionType type = header & CX_COMPRESSION_TYPE_MASK;
+  if (type != CX_COMPRESSION_TYPE_LEMPEL_ZIV) {
+    nsmbw_compress_print_error("Input data is not a CX-LZ file");
     return false;
   }
+
+  const uint8_t *const src_end = src + src_length;
+  uint8_t *const dst_start = dst;
+
+  uint32_t size = header >> 8;
+  src += sizeof(uint32_t);
+  if (size == 0) {
+    if (src_length < 8) {
+      nsmbw_compress_print_error(
+          "Input data is too small to be a valid CX-LZ file");
+      return false;
+    }
+    size = ncutil_read_le_u32(src, 0);
+    if (size == 0) {
+      nsmbw_compress_print_error("Invalid zero size in CX file header (LZ)");
+      return false;
+    }
+    src += sizeof(uint32_t);
+  }
+
+  uint8_t option = header & 0x0F;
+  if (option != 0 && option != 1) {
+    nsmbw_compress_print_error(
+        "Input data has unrecognized LZ compression option: %d", option);
+    return false;
+  }
+
+  const uint8_t *const dst_end = dst + size;
+
+  while (dst < dst_end) {
+    if (src >= src_end) {
+      nsmbw_compress_print_error("Input data ended prematurely");
+      return false;
+    }
+    uint32_t flags = *src++;
+    for (int i = 0; i < 8; i++, flags <<= 1) {
+      if (dst >= dst_end) {
+        break;
+      }
+
+      if (!(flags & 0x80)) {
+        // Literal byte
+        if (src >= src_end) {
+          nsmbw_compress_print_error("Input data ended prematurely");
+          return false;
+        }
+        *dst++ = *src++;
+        continue;
+      }
+
+      // Encoded reference
+
+      if (src + 2 > src_end) {
+        nsmbw_compress_print_error("Input data ended prematurely");
+        return false;
+      }
+      uint32_t ref_size = (*src >> 4) + 3;
+      if (option) {
+        if (ref_size == 0x01 + 3) {
+          if (src + 3 > src_end) {
+            nsmbw_compress_print_error("Input data ended prematurely");
+            return false;
+          }
+          // Why do we need references this size? This can encode a file
+          // repeating the same byte 65808 times very well!!!!!!!
+          ref_size = (*src++ & 0x0F) << 12;
+          ref_size |= *src++ << 4;
+          ref_size |= *src >> 4;
+          ref_size += 0x111;
+        } else if (ref_size == 0x00 + 3) {
+          ref_size = (*src++ & 0x0F) << 4;
+          ref_size |= *src >> 4;
+          ref_size += 0x11;
+        } else {
+          ref_size -= 2;
+        }
+      }
+
+      if (src + 2 > src_end) {
+        nsmbw_compress_print_error("Input data ended prematurely");
+        return false;
+      }
+
+      uint32_t ref_offset = (*src++ & 0x0F) << 8;
+      ref_offset = (ref_offset | *src++) + 1;
+
+      if (dst - dst_start < ref_offset) {
+        nsmbw_compress_print_error("Out of bounds reference in LZ compressed "
+                                   "file (offset %u at output position %zu)",
+                                   ref_offset, (size_t)(dst - dst_start));
+        return false;
+      }
+      if (dst + ref_size > dst_end) {
+        nsmbw_compress_print_error(
+            "Reference overflows output size in LZ compressed file (offset %u, "
+            "size %u at output position %zu with output size %zu)",
+            ref_offset, ref_size, (size_t)(dst - dst_start), size);
+        return false;
+      }
+
+      do {
+        *dst = *(dst - ref_offset);
+        ++dst;
+      } while (--ref_size > 0);
+    }
+  }
+
+  if (ncutil_align_up_ptr(0x20, src) < (const void *)src_end) {
+    nsmbw_compress_print_warning(
+        "Ignored trailing %zu bytes in file after compressed data",
+        (size_t)(src_end - src));
+  }
+
+  *dst_length = size;
   return true;
 }
 
@@ -229,14 +344,14 @@ bool nsmbw_compress_lz_encode(
   const uint8_t *src_end = src + src_length;
 
   if (src_length < 0x1000000) {
-    nsmbw_compress_util_write_le_u32(
-        dst, 0,
-        src_length << 8 | CX_COMPRESSION_TYPE_LEMPEL_ZIV | params->lz_extended);
+    ncutil_write_le_u32(dst, 0,
+                        src_length << 8 | CX_COMPRESSION_TYPE_LEMPEL_ZIV |
+                            params->lz_extended);
     dst += sizeof(uint32_t);
   } else {
-    nsmbw_compress_util_write_le_u32(
-        dst, 0, CX_COMPRESSION_TYPE_LEMPEL_ZIV | params->lz_extended);
-    nsmbw_compress_util_write_le_u32(dst, sizeof(uint32_t), src_length);
+    ncutil_write_le_u32(dst, 0,
+                        CX_COMPRESSION_TYPE_LEMPEL_ZIV | params->lz_extended);
+    ncutil_write_le_u32(dst, sizeof(uint32_t), src_length);
     dst += sizeof(uint32_t) + sizeof(uint32_t);
   }
 

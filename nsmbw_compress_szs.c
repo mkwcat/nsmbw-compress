@@ -10,7 +10,7 @@ bool nsmbw_compress_szs_decode(const uint8_t *src, uint8_t *dst,
                                const struct nsmbw_compress_parameters *params) {
   (void)params;
 
-  size_t expand_size = nsmbw_compress_util_read_be_u32(src, 4);
+  size_t expand_size = ncutil_read_be_u32(src, 4);
   if (expand_size != *dst_length) {
     return false; // Output size mismatch
   }
