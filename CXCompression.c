@@ -15,12 +15,15 @@
  */
 
 struct LZTable {
-  uint16_t at_0x00;
-  uint16_t at_0x02;
-  short *at_0x04;
-  short *at_0x08;
-  short *at_0x0c;
-  uint32_t windowSize; // Added
+  // The current offset in the skip table
+  uint16_t window_pos;
+  // Number of entries populated in the skip table
+  uint16_t window_size;
+  short *skip_table_next;
+  short *skip_table_head;
+  short *skip_table_tail;
+  uint32_t max_window_size;  // Added
+  short *reverse_skip_table; // Added
 };
 
 struct at0 {
@@ -59,7 +62,7 @@ struct HuffTable {
  */
 
 static int SearchLZ(struct LZTable const *table, uint8_t const *data, uint32_t,
-                    uint16_t *, int);
+                    uint16_t *, size_t);
 static void LZInitTable(struct LZTable *table, short *work,
                         uint32_t windowSize);
 static void SlideByte(struct LZTable *table, uint8_t const *data);
@@ -200,140 +203,157 @@ uint32_t CXCompressLZImpl(uint8_t const *srcp, uint32_t size, uint8_t *dstp,
 }
 
 static int SearchLZ(struct LZTable const *table, uint8_t const *data,
-                    uint32_t param_3, uint16_t *param_4, int param_5) {
-  uint8_t const *a;
-  uint8_t const *b;
-  uint8_t const *c;
-  uint16_t d;
-  uint16_t e;
-  unsigned f;
-  short *g;
-  uint16_t h;
-  int l;
-  unsigned m;
+                    uint32_t data_size, uint16_t *param_4,
+                    size_t max_match_size) {
+  uint8_t const *data_byte;
+  uint8_t const *match_data;
+  unsigned best_match_offset;
+  unsigned window_pos;
+  unsigned match_size;
+  unsigned window_size;
+  unsigned best_match_size;
 
-  m = 2;
-  g = table->at_0x04;
-  e = table->at_0x00;
-  h = table->at_0x02;
+  best_match_size = 2;
+  short *st_next = table->skip_table_next;
+  if (table->reverse_skip_table) {
+    // Reverse the skip table for searching from the tail. This is more optimal
+    // with LH compression due to the smaller reference bit size. This also
+    // appears to be what Nintendo did
+    st_next = table->reverse_skip_table;
+  }
+  window_pos = table->window_pos;
+  window_size = table->window_size;
 
-  if (param_3 < 3)
+  const unsigned minimum_match_size = 3;
+
+  if (data_size < minimum_match_size) {
     return 0;
+  }
 
-  l = table->at_0x08[*data];
+  int it;
+  if (table->reverse_skip_table) {
+    it = table->skip_table_tail[*data];
+  } else {
+    it = table->skip_table_head[*data];
+  }
 
-  while (l != -1) {
-    if (l < e)
-      b = data - e + l;
-    else
-      b = data - h - e + l;
+  max_match_size = MIN(max_match_size, data_size);
 
-    if (b[1] != data[1] || b[2] != data[2]) {
-      l = g[l];
+  for (; it != -1; it = st_next[it]) {
+    if (it < window_pos) {
+      match_data = data - window_pos + it;
+    } else {
+      match_data = data - window_size - window_pos + it;
+    }
+
+    if (match_data[1] != data[1] || match_data[2] != data[2]) {
       continue;
     }
 
-    if (data - b < 2)
+    if (data - match_data < 2) {
+      if (table->reverse_skip_table) {
+        continue;
+      }
       break;
-
-    f = 3;
-    c = b + 3;
-    a = data + 3;
-
-    while (a - data < param_3 && *a == *c) {
-      ++a;
-      ++c;
-      ++f;
-
-      if (f == param_5)
-        break;
     }
 
-    if (f > m) {
-      m = f;
-      d = data - b;
-
-      if (m == param_5 || m == param_3)
-        break;
+    for (match_size = minimum_match_size;
+         match_size < max_match_size &&
+         data[match_size] == match_data[match_size];
+         match_size++) {
     }
 
-    l = g[l];
+    if (match_size > best_match_size) {
+      best_match_size = match_size;
+      best_match_offset = data - match_data;
+
+      if (best_match_size == max_match_size) {
+        break;
+      }
+    }
   }
 
-  if (m < 3)
+  if (best_match_size < minimum_match_size) {
     return 0;
+  }
 
-  *param_4 = d;
-  return m;
+  *param_4 = best_match_offset;
+  return best_match_size;
 }
 
 static void LZInitTable(struct LZTable *table, short *work,
                         uint32_t windowSize) {
-  table->at_0x04 = work;
-  table->at_0x08 = work + windowSize;
-  table->at_0x0c = work + windowSize + 0x100;
+  table->skip_table_next = work;
+  table->skip_table_head = work + windowSize;
+  table->skip_table_tail = work + windowSize + 0x100;
 
   uint16_t i;
   for (i = 0; i < 0x100; ++i) {
-    table->at_0x08[i] = -1;
-    table->at_0x0c[i] = -1;
+    table->skip_table_head[i] = -1;
+    table->skip_table_tail[i] = -1;
   }
 
-  table->at_0x00 = 0;
-  table->at_0x02 = 0;
-  table->windowSize = windowSize;
+  table->window_pos = 0;
+  table->window_size = 0;
+  table->max_window_size = windowSize;
+  table->reverse_skip_table = NULL;
 }
 
-static void SlideByte(struct LZTable *table, uint8_t const *data) {
-  uint8_t a;
-  uint16_t b;
-  short c;
-  short *d_at8;
-  short *d_at4;
-  short *d_atc;
+static void SlideByte(struct LZTable *restrict table, uint8_t const *data) {
+  uint8_t value;
+  uint16_t it;
+  short *restrict st_head = table->skip_table_head;
+  short *restrict st_next = table->skip_table_next;
+  short *restrict st_tail = table->skip_table_tail;
+  short *restrict st_reverse = table->reverse_skip_table;
 
-  a = *data;
-  d_at8 = table->at_0x08;
-  d_at4 = table->at_0x04;
-  d_atc = table->at_0x0c;
+  value = *data;
 
-  uint16_t const g = table->at_0x00;
-  uint16_t const h = table->at_0x02;
+  uint16_t const window_pos = table->window_pos;
+  uint16_t const window_size = table->window_size;
 
-  const int windowSize = table->windowSize;
+  const int max_window_size = table->max_window_size;
 
-  if (h == windowSize) {
-    uint8_t i = data[-windowSize];
+  if (window_size == max_window_size) {
+    uint8_t remove_value = data[-max_window_size];
+    if (st_reverse && st_head[remove_value] != -1 &&
+        st_next[st_head[remove_value]] != -1) {
+      st_reverse[st_next[st_head[remove_value]]] = -1;
+    }
+    if ((st_head[remove_value] = st_next[st_head[remove_value]]) == -1) {
+      st_tail[remove_value] = -1;
+    }
 
-    if ((d_at8[i] = d_at4[d_at8[i]]) == -1)
-      d_atc[i] = -1;
-
-    b = g;
+    it = window_pos;
   } else {
-    b = h;
+    it = window_size;
   }
 
-  c = d_atc[a];
+  int tail_it = st_tail[value];
+  if (tail_it == -1) {
+    st_head[value] = it;
+  } else {
+    st_next[tail_it] = it;
+  }
 
-  if (c == -1)
-    d_at8[a] = b;
-  else
-    d_at4[c] = b;
+  st_tail[value] = it;
+  st_next[it] = -1;
+  if (st_reverse) {
+    st_reverse[it] = tail_it;
+  }
 
-  d_atc[a] = b;
-  d_at4[b] = -1;
-
-  if (h == windowSize)
-    table->at_0x00 = (g + 1) % windowSize;
-  else
-    ++table->at_0x02;
+  if (window_size == max_window_size) {
+    table->window_pos = (window_pos + 1) % max_window_size;
+  } else {
+    table->window_size++;
+  }
 }
 
 static void LZSlide(struct LZTable *table, uint8_t const *data,
                     uint32_t length) {
-  int i;
-  for (i = 0; i < length; ++i)
+  for (uint32_t i = 0; i < length; ++i) {
     SlideByte(table, data++);
+  }
 }
 
 uint32_t CXCompressRL(uint8_t const *srcp, uint32_t size, uint8_t *dstp) {
@@ -963,7 +983,8 @@ static int CountBitsNeededToEncode(uint32_t value) {
 }
 
 static uint32_t LHEncodeLZ(uint8_t const *srcp, uint32_t size, uint8_t *dstp,
-                           void *work, struct HuffTable *huffTables) {
+                           struct CXiCompressLHWork *lhWork,
+                           struct HuffTable *huffTables) {
   uint32_t length;
   uint32_t a;
   uint8_t b;
@@ -977,16 +998,13 @@ static uint32_t LHEncodeLZ(uint8_t const *srcp, uint32_t size, uint8_t *dstp,
 
   g = 0x102;
 
-  assert(((size_t)srcp & 0x1) == 0);
-  assert(work != NULL);
-  assert(size > 4);
-
   length = 0;
 
   f = size * CX_COMPRESS_DST_SCALE;
 
   struct LZTable table;
-  LZInitTable(&table, work, CX_COMPRESS_LH_LZ_DETAIL_SIZE);
+  LZInitTable(&table, (short *)lhWork->lzWork, CX_COMPRESS_LH_LZ_DETAIL_SIZE);
+  table.reverse_skip_table = lhWork->lz_reverse_skip_table;
 
   while (size) {
     b = 0;
@@ -1113,7 +1131,7 @@ uint32_t CXCompressLH(uint8_t const *srcp, uint32_t size, uint8_t *dstp,
   HuffInitTable(&table[0], lhWork->huffLWork, 1 << 9);
   HuffInitTable(&table[1], lhWork->huffRWork, 1 << 5);
 
-  uint32_t lz_length = LHEncodeLZ(srcp, size, tmp_dstp, lhWork->lzWork, table);
+  uint32_t lz_length = LHEncodeLZ(srcp, size, tmp_dstp, lhWork, table);
   if (!lz_length)
     return 0;
 

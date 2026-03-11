@@ -50,6 +50,7 @@ struct CXiCompressLHWork {
 
   _Alignas(4) uint8_t
       lzWork[CX_COMPRESS_LZ_WORK_SIZE_DETAIL(CX_COMPRESS_LH_LZ_DETAIL_SIZE)];
+  short lz_reverse_skip_table[CX_COMPRESS_LH_LZ_DETAIL_SIZE];
 };
 
 #define CX_COMPRESS_LH_WORK_SIZE sizeof(struct CXiCompressLHWork)
