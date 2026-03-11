@@ -250,13 +250,6 @@ static int SearchLZ(struct LZTable const *table, uint8_t const *data,
       continue;
     }
 
-    if (data - match_data < 2) {
-      if (table->reverse_skip_table) {
-        continue;
-      }
-      break;
-    }
-
     for (match_size = minimum_match_size;
          match_size < max_match_size &&
          data[match_size] == match_data[match_size];
