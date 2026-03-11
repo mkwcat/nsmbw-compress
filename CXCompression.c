@@ -1148,13 +1148,14 @@ uint32_t CXCompressLH(uint8_t const *srcp, uint32_t size, uint8_t *dstp,
   // Write tables
   for (int t = 0; t < 2; ++t) {
     const int bitSize = t ? 5 : 9;
-    const uint16_t tableSize = (table[t].treeEntryCount - 1) << 1;
-    const uint16_t tableByteSize = (bitSize * (tableSize >> 2)) / 8;
+    const uint16_t tableSize = (table[t].treeEntryCount & ~1) << 1;
+    const uint16_t tableHeaderSize =
+        (bitSize * (table[t].treeEntryCount >> 1)) / 8;
     if (bitSize > 8) {
-      BitWriter_Write(&bitWriter, (tableByteSize << 8) | (tableByteSize >> 8),
-                      16);
+      BitWriter_Write(&bitWriter,
+                      (tableHeaderSize << 8) | (tableHeaderSize >> 8), 16);
     } else {
-      BitWriter_Write(&bitWriter, tableByteSize, 8);
+      BitWriter_Write(&bitWriter, tableHeaderSize, 8);
     }
     for (uint16_t i = 1; i < tableSize; ++i) {
       uint16_t treeFlags = table[t].at_0x04[i] & 0xC000;
