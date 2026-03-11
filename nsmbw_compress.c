@@ -669,8 +669,8 @@ static int main_compress(const void *input_file, size_t input_file_size,
     argument_values[argument_index_output].string_value = output_path;
   }
 
-  void *compressed_data =
-      malloc_disposable(0x1000 + input_file_size * CX_COMPRESS_DST_SCALE);
+  size_t dst_length = 0x1000 + input_file_size * CX_COMPRESS_DST_SCALE;
+  void *compressed_data = malloc_disposable(dst_length);
   if (compressed_data == NULL) {
     nsmbw_compress_print_error(
         "Failed to allocate memory for compressed data: %s", strerror(errno));
@@ -678,10 +678,9 @@ static int main_compress(const void *input_file, size_t input_file_size,
   }
 
   struct nsmbw_compress_parameters params = {
-      .lz_extended =
-          argument_specified[argument_index_old_lz11]
-              ? !argument_values[argument_index_old_lz11].bool_value
-              : true,
+      .lz_extended = argument_specified[argument_index_old_lz11]
+                         ? !argument_values[argument_index_old_lz11].bool_value
+                         : true,
       .huff_bit_size = argument_specified[argument_index_bitsize]
                            ? argument_values[argument_index_bitsize].int_value
                            : 8,
@@ -691,7 +690,6 @@ static int main_compress(const void *input_file, size_t input_file_size,
               : 8,
   };
 
-  size_t dst_length = 0;
   bool ok = compress_functions[compression_type][0](
       input_file, compressed_data, input_file_size, &dst_length, &params);
   if (!ok) {

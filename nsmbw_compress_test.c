@@ -50,7 +50,7 @@ static void run_compression_tests() {
 
     printf("Testing compression type: %s\n", type_name);
 
-    size_t compressed_size;
+    size_t compressed_size = 0x1000 + BUFFER_SIZE * 4;
     struct nsmbw_compress_parameters params = {
         .huff_bit_size = 4,
         .filter_diff_size = 16,

@@ -202,10 +202,10 @@ static void lz_init_context(struct nsmbw_compress_lz_context *context,
   context->max_window_size = window_size;
 }
 
-static unsigned
+static uint32_t
 lz_search_window(struct nsmbw_compress_lz_context const *context,
                  uint8_t const *data, uint32_t data_size,
-                 uint16_t *restrict match_distance, size_t max_match_size) {
+                 uint16_t *restrict match_distance, uint32_t max_match_size) {
   const lz_size_t window_pos = context->window_pos;
   const lz_size_t window_size = context->window_size;
 
@@ -217,12 +217,12 @@ lz_search_window(struct nsmbw_compress_lz_context const *context,
     st_next = context->skip_table_prev;
   }
 
-  static const unsigned minimum_match_size = 3;
+  static const uint32_t minimum_match_size = 3;
   if (data_size < minimum_match_size) {
     return 0;
   }
 
-  int it;
+  lz_size_t it;
   if (context->skip_table_prev) {
     it = context->skip_table_tail[*data];
   } else {
@@ -231,8 +231,8 @@ lz_search_window(struct nsmbw_compress_lz_context const *context,
 
   max_match_size = max_match_size < data_size ? max_match_size : data_size;
 
-  unsigned best_match_offset;
-  unsigned best_match_size = 2;
+  uint32_t best_match_offset;
+  uint32_t best_match_size = 2;
   for (; it != -1; it = st_next[it]) {
     const uint8_t *match_data;
     if (it < window_pos) {
@@ -245,7 +245,7 @@ lz_search_window(struct nsmbw_compress_lz_context const *context,
       continue;
     }
 
-    unsigned match_size;
+    uint32_t match_size;
     for (match_size = 3; match_size < max_match_size &&
                          data[match_size] == match_data[match_size];
          match_size++) {
@@ -337,7 +337,7 @@ bool nsmbw_compress_lz_encode(
   }
 
   const unsigned max_match_size = params->lz_extended ? 0x10110 : 0x12;
-  const size_t max_dst_size = src_length * CX_COMPRESS_DST_SCALE;
+  const size_t max_dst_size = *dst_length;
 
   const uint8_t *dst_start = dst;
   const uint8_t *dst_end = dst + max_dst_size;
@@ -384,6 +384,7 @@ bool nsmbw_compress_lz_encode(
         continue;
       }
 
+      // Encoded reference
       flags |= 1;
 
       if (dst + 2 >= dst_end) {
