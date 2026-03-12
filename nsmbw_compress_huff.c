@@ -1,3 +1,4 @@
+#include "nsmbw_compress_huff.h"
 #include "cx.h"
 #include "nsmbw_compress.h"
 #include "nsmbw_compress_internal.h"
@@ -5,6 +6,9 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
+
+typedef nsmbw_compress_huff_size_t huff_size_t;
+static const huff_size_t huff_invalid_node = nsmbw_compress_huff_invalid_node;
 
 bool nsmbw_compress_huff_decode(
     const uint8_t *src, uint8_t *dst, size_t src_length, size_t *dst_length,
@@ -19,72 +23,48 @@ bool nsmbw_compress_huff_decode(
   return true;
 }
 
-typedef uint16_t huff_index_t;
-static const huff_index_t huff_invalid_node = (huff_index_t)-1;
-
-struct huff_table {
-  struct huff_node *nodes;
-  huff_index_t *encoded_nodes;
-  struct huff_tree *tree;
-  huff_index_t tree_count;
-};
-
-struct huff_node {
-  int unsigned count;
-  huff_index_t index;
-  huff_index_t parent;
-  huff_index_t left;
-  huff_index_t right;
-  uint16_t encoded_ref_bit_size;
-  uint16_t depth;
-  uint32_t encoded_ref;
-  uint8_t direction_from_parent;
-  huff_index_t count_hword;
-};
-
-struct huff_tree {
-  bool is_left_leaf;
-  bool is_right_leaf;
-  huff_index_t left;
-  huff_index_t right;
-};
-
 size_t nsmbw_compress_huff_get_work_size(uint8_t huff_bit_size) {
   const size_t huff_sym_size = 1 << huff_bit_size;
 
-  const size_t nodes_size = sizeof(struct huff_node) * huff_sym_size * 2;
-  const size_t encoded_nodes_size = sizeof(huff_index_t) * huff_sym_size * 2;
-  const size_t tree_size = sizeof(struct huff_tree) * huff_sym_size;
+  const size_t nodes_size =
+      sizeof(struct nsmbw_compress_huff_node) * huff_sym_size * 2;
+  const size_t encoded_nodes_size = sizeof(huff_size_t) * huff_sym_size * 2;
+  const size_t tree_size =
+      sizeof(struct nsmbw_compress_huff_tree) * huff_sym_size;
   return nodes_size + encoded_nodes_size + tree_size;
 }
 
-void nsmbw_compress_huff_init_table(struct huff_table *table, void *work,
-                                    uint8_t huff_bit_size) {
+void nsmbw_compress_huff_init_table(struct nsmbw_compress_huff_table *table,
+                                    void *work, uint8_t huff_bit_size) {
   const size_t huff_sym_size = 1 << huff_bit_size;
 
-  const size_t nodes_size = sizeof(struct huff_node) * huff_sym_size * 2;
-  const size_t encoded_nodes_size = sizeof(huff_index_t) * huff_sym_size * 2;
-  const size_t tree_size = sizeof(struct huff_tree) * huff_sym_size;
+  const size_t nodes_size =
+      sizeof(struct nsmbw_compress_huff_node) * huff_sym_size * 2;
+  const size_t encoded_nodes_size = sizeof(huff_size_t) * huff_sym_size * 2;
+  const size_t tree_size =
+      sizeof(struct nsmbw_compress_huff_tree) * huff_sym_size;
 
-  table->nodes = (struct huff_node *)work;
-  table->encoded_nodes = (huff_index_t *)((uint8_t *)work + nodes_size);
+  table->nodes = (struct nsmbw_compress_huff_node *)work;
+  table->encoded_nodes = (huff_size_t *)((uint8_t *)work + nodes_size);
   table->tree =
-      (struct huff_tree *)((uint8_t *)work + nodes_size + encoded_nodes_size);
+      (struct nsmbw_compress_huff_tree *)((uint8_t *)work + nodes_size +
+                                          encoded_nodes_size);
   table->tree_count = 1;
 
-  struct huff_node *const nodes = table->nodes;
-  static const struct huff_node initial_node = {.left = -1, .right = -1};
+  struct nsmbw_compress_huff_node *const nodes = table->nodes;
+  static const struct nsmbw_compress_huff_node initial_node = {.left = -1,
+                                                               .right = -1};
 
   for (uint32_t i = 0; i < huff_sym_size * 2; i++) {
     nodes[i] = initial_node;
     nodes[i].index = i;
   }
 
-  static const struct huff_tree initial_tree = {.is_left_leaf = 1,
-                                                .is_right_leaf = 1};
+  static const struct nsmbw_compress_huff_tree initial_tree = {
+      .is_left_leaf = 1, .is_right_leaf = 1};
 
   uint16_t *const encoded_nodes = table->encoded_nodes;
-  struct huff_tree *const tree = table->tree;
+  struct nsmbw_compress_huff_tree *const tree = table->tree;
 
   for (uint32_t i = 0; i < huff_sym_size; i++) {
     encoded_nodes[i * 2 + 0] = 0;
@@ -94,7 +74,7 @@ void nsmbw_compress_huff_init_table(struct huff_table *table, void *work,
   }
 }
 
-void nsmbw_compress_huff_count_data(struct huff_node *nodes,
+void nsmbw_compress_huff_count_data(struct nsmbw_compress_huff_node *nodes,
                                     uint8_t const *data, uint32_t size,
                                     uint8_t huff_bit_size) {
   if (huff_bit_size == 8) {
@@ -114,9 +94,10 @@ void nsmbw_compress_huff_count_data(struct huff_node *nodes,
   }
 }
 
-static void huff_add_parent_depth_to_table(struct huff_node *nodes,
-                                           huff_index_t left_index,
-                                           huff_index_t right_index) {
+static void
+huff_add_parent_depth_to_table(struct nsmbw_compress_huff_node *nodes,
+                               huff_size_t left_index,
+                               huff_size_t right_index) {
   nodes[left_index].encoded_ref_bit_size++;
   nodes[right_index].encoded_ref_bit_size++;
 
@@ -131,7 +112,8 @@ static void huff_add_parent_depth_to_table(struct huff_node *nodes,
   }
 }
 
-static void huff_add_code_to_table(struct huff_node *nodes, huff_index_t index,
+static void huff_add_code_to_table(struct nsmbw_compress_huff_node *nodes,
+                                   huff_size_t index,
                                    uint32_t current_encoded_ref) {
   assert(index != huff_invalid_node);
   nodes[index].encoded_ref =
@@ -143,10 +125,11 @@ static void huff_add_code_to_table(struct huff_node *nodes, huff_index_t index,
   }
 }
 
-static huff_index_t huff_add_count_hword_to_table(struct huff_node *nodes,
-                                                  huff_index_t index) {
-  huff_index_t a;
-  huff_index_t b;
+static huff_size_t
+huff_add_count_hword_to_table(struct nsmbw_compress_huff_node *nodes,
+                              huff_size_t index) {
+  huff_size_t a;
+  huff_size_t b;
 
   switch (nodes[index].depth) {
   case 0:
@@ -165,13 +148,14 @@ static huff_index_t huff_add_count_hword_to_table(struct huff_node *nodes,
   return nodes[index].count_hword = a + b + 1;
 }
 
-uint16_t nsmbw_compress_huff_construct_tree(struct huff_node *nodes,
-                                            const uint32_t huff_sym_size) {
-  huff_index_t branch;
+huff_size_t
+nsmbw_compress_huff_construct_tree(struct nsmbw_compress_huff_node *nodes,
+                                   const uint32_t huff_sym_size) {
+  huff_size_t branch;
   for (branch = huff_sym_size;; branch++) {
-    huff_index_t left = huff_invalid_node, right = huff_invalid_node;
+    huff_size_t left = huff_invalid_node, right = huff_invalid_node;
 
-    for (huff_index_t i = 0; i < branch; ++i) {
+    for (huff_size_t i = 0; i < branch; ++i) {
       if (nodes[i].count && !nodes[i].parent) {
         if (left == huff_invalid_node || nodes[i].count < nodes[left].count) {
           left = i;
@@ -179,7 +163,7 @@ uint16_t nsmbw_compress_huff_construct_tree(struct huff_node *nodes,
       }
     }
 
-    for (huff_index_t i = 0; i < branch; ++i) {
+    for (huff_size_t i = 0; i < branch; ++i) {
       if (nodes[i].count && !nodes[i].parent && i != left) {
         if (right == huff_invalid_node || nodes[i].count < nodes[right].count) {
           right = i;
@@ -230,15 +214,15 @@ uint16_t nsmbw_compress_huff_construct_tree(struct huff_node *nodes,
   return branch;
 }
 
-static void huff_set_one_node_offset(struct huff_table *table,
-                                     huff_index_t index, bool is_right) {
+static void huff_set_one_node_offset(struct nsmbw_compress_huff_table *table,
+                                     huff_size_t index, bool is_right) {
 
-  struct huff_node *const nodes = table->nodes;
-  huff_index_t *const encoded_nodes = table->encoded_nodes;
-  struct huff_tree *const tree = table->tree;
-  huff_index_t huff_tree_count = table->tree_count;
+  struct nsmbw_compress_huff_node *const nodes = table->nodes;
+  huff_size_t *const encoded_nodes = table->encoded_nodes;
+  struct nsmbw_compress_huff_tree *const tree = table->tree;
+  huff_size_t huff_tree_count = table->tree_count;
 
-  huff_index_t node;
+  huff_size_t node;
   if (is_right) {
     node = tree[index].right;
     tree[index].is_right_leaf = 0;
@@ -247,15 +231,15 @@ static void huff_set_one_node_offset(struct huff_table *table,
     tree[index].is_left_leaf = 0;
   }
 
-  static const huff_index_t left_leaf_flag = 0x8000;
-  static const huff_index_t right_leaf_flag = 0x4000;
-  huff_index_t encoded_value = 0;
+  static const huff_size_t left_leaf_flag = 0x8000;
+  static const huff_size_t right_leaf_flag = 0x4000;
+  huff_size_t encoded_value = 0;
 
   if (!nodes[nodes[node].left].depth) {
     encoded_value |= left_leaf_flag;
 
     encoded_nodes[huff_tree_count * 2 + 0] = nodes[node].left;
-    tree[huff_tree_count].left = (uint8_t)nodes[node].left;
+    tree[huff_tree_count].left = nodes[node].left;
     tree[huff_tree_count].is_left_leaf = false;
   } else {
     tree[huff_tree_count].left = nodes[node].left;
@@ -265,7 +249,7 @@ static void huff_set_one_node_offset(struct huff_table *table,
     encoded_value |= right_leaf_flag;
 
     encoded_nodes[huff_tree_count * 2 + 1] = nodes[node].right;
-    tree[huff_tree_count].right = (uint8_t)nodes[node].right;
+    tree[huff_tree_count].right = nodes[node].right;
     tree[huff_tree_count].is_right_leaf = false;
   } else {
     tree[huff_tree_count].right = nodes[node].right;
@@ -277,9 +261,9 @@ static void huff_set_one_node_offset(struct huff_table *table,
   table->tree_count++;
 }
 
-static void huff_make_subset_huff_tree(struct huff_table *table,
-                                       huff_index_t index, bool is_right) {
-  huff_index_t i = table->tree_count;
+static void huff_make_subset_huff_tree(struct nsmbw_compress_huff_table *table,
+                                       huff_size_t index, bool is_right) {
+  huff_size_t i = table->tree_count;
 
   huff_set_one_node_offset(table, index, is_right);
 
@@ -302,13 +286,13 @@ static void huff_make_subset_huff_tree(struct huff_table *table,
   }
 }
 
-static bool huff_remaining_node_can_set_offset(struct huff_table *table,
-                                               huff_index_t index,
-                                               uint8_t huff_bit_size) {
+static bool
+huff_remaining_node_can_set_offset(struct nsmbw_compress_huff_table *table,
+                                   huff_size_t index, uint8_t huff_bit_size) {
   const int max_tree_size = 1 << (huff_bit_size - 2);
   short encode_offset = max_tree_size - index;
 
-  for (huff_index_t i = 0; i < table->tree_count; ++i) {
+  for (huff_size_t i = 0; i < table->tree_count; ++i) {
     if (table->tree[i].is_left_leaf) {
       if (table->tree_count - i > encode_offset--) {
         return false;
@@ -325,39 +309,37 @@ static bool huff_remaining_node_can_set_offset(struct huff_table *table,
   return true;
 }
 
-void nsmbw_compress_huff_make_huff_tree(struct huff_table *table,
+void nsmbw_compress_huff_make_huff_tree(struct nsmbw_compress_huff_table *table,
                                         uint16_t construct_count,
                                         uint8_t huff_bit_size) {
-  static const huff_index_t first_index = 0;
+  static const huff_size_t first_index = 0;
 
   table->tree_count = 1;
   table->tree->is_left_leaf = false;
   table->tree->right = construct_count;
-  const int max_tree_size = 1 << (huff_bit_size - 2);
+  const uint32_t max_tree_size = 1 << (huff_bit_size - 2);
 
 loop:
   while (true) {
-    uint16_t leaf_count = 0;
-
-    for (huff_index_t i = 0; i < table->tree_count; i++) {
+    huff_size_t leaf_count = 0;
+    for (huff_size_t i = 0; i < table->tree_count; i++) {
       if (table->tree[i].is_left_leaf) {
-        ++leaf_count;
+        leaf_count++;
       }
 
       if (table->tree[i].is_right_leaf) {
-        ++leaf_count;
+        leaf_count++;
       }
     }
 
-    huff_index_t branch_node = huff_invalid_node;
+    huff_size_t branch_node = huff_invalid_node;
     bool is_right;
 
-    for (huff_index_t i = 0; i < table->tree_count; i++) {
-      huff_index_t encoded_offset = table->tree_count - i;
+    for (huff_size_t i = 0; i < table->tree_count; i++) {
+      huff_size_t encoded_offset = table->tree_count - i;
 
       if (table->tree[i].is_left_leaf) {
-        huff_index_t count_hword =
-            table->nodes[table->tree[i].left].count_hword;
+        huff_size_t count_hword = table->nodes[table->tree[i].left].count_hword;
 
         if (count_hword + leaf_count <= max_tree_size &&
             huff_remaining_node_can_set_offset(table, count_hword,
@@ -371,7 +353,7 @@ loop:
       }
 
       if (table->tree[i].is_right_leaf) {
-        huff_index_t count_hword =
+        huff_size_t count_hword =
             table->nodes[table->tree[i].right].count_hword;
 
         if (count_hword + leaf_count <= max_tree_size &&
@@ -392,8 +374,8 @@ loop:
     huff_make_subset_huff_tree(table, branch_node, is_right);
   }
 
-  for (huff_index_t i = 0; i < table->tree_count; i++) {
-    huff_index_t best_count = 0;
+  for (huff_size_t i = 0; i < table->tree_count; i++) {
+    huff_size_t best_count = 0;
     bool is_right = false;
 
     if (table->tree[i].is_left_leaf) {
@@ -412,10 +394,9 @@ loop:
   }
 }
 
-uint32_t nsmbw_compress_huff_convert_data(struct huff_node *nodes,
-                                          uint8_t const *src, uint8_t *dst,
-                                          uint32_t size, uint32_t max_length,
-                                          uint8_t huff_bit_size) {
+uint32_t nsmbw_compress_huff_convert_data(
+    struct nsmbw_compress_huff_node *nodes, uint8_t const *src, uint8_t *dst,
+    uint32_t size, uint32_t max_length, uint8_t huff_bit_size) {
   uint32_t write_value = 0;
   uint32_t bit_offset = 0;
   uint32_t length = 0;
@@ -499,7 +480,7 @@ bool nsmbw_compress_huff_encode(
   const uint16_t huff_sym_size = 1 << huff_bit_size;
   const size_t max_dst_size = *dst_length;
 
-  struct huff_table table;
+  struct nsmbw_compress_huff_table table;
 
   nsmbw_compress_huff_init_table(&table, work_buffer, huff_bit_size);
   nsmbw_compress_huff_count_data(table.nodes, src, src_length, huff_bit_size);
@@ -529,7 +510,7 @@ bool nsmbw_compress_huff_encode(
     return false;
   }
 
-  for (uint32_t i = 0; i < (uint32_t)((table.tree_count + 1) << 1); ++i) {
+  for (uint32_t i = 0; i < (table.tree_count + 1) << 1; ++i) {
     uint8_t c = (table.encoded_nodes[i] & 0xC000) >> 8;
     dst[length++] = table.encoded_nodes[i] | c;
   }
@@ -543,19 +524,17 @@ bool nsmbw_compress_huff_encode(
     dst[length++] = 0;
   }
 
-  { // random block
-    uint32_t converted_size = nsmbw_compress_huff_convert_data(
-        table.nodes, src, dst + length, src_length, max_dst_size - length,
-        huff_bit_size);
-    if (!converted_size) {
-      nsmbw_compress_print_error("Output file is too much larger than the "
-                                 "input file; aborting compression");
-      free(work_buffer);
-      return false;
-    }
-
-    length += converted_size;
+  uint32_t converted_size = nsmbw_compress_huff_convert_data(
+      table.nodes, src, dst + length, src_length, max_dst_size - length,
+      huff_bit_size);
+  if (!converted_size) {
+    nsmbw_compress_print_error("Output file is too much larger than the "
+                               "input file; aborting compression");
+    free(work_buffer);
+    return false;
   }
+
+  length += converted_size;
 
   free(work_buffer);
 
