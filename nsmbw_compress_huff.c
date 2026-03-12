@@ -1,6 +1,7 @@
 #include "cx.h"
 #include "nsmbw_compress.h"
 #include "nsmbw_compress_internal.h"
+#include <assert.h>
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
@@ -18,11 +19,475 @@ bool nsmbw_compress_huff_decode(
   return true;
 }
 
+typedef uint16_t huff_index_t;
+static const huff_index_t huff_invalid_node = (huff_index_t)-1;
+
+struct huff_table {
+  struct huff_node *nodes;
+  huff_index_t *encoded_nodes;
+  struct huff_tree *tree;
+  huff_index_t tree_count;
+};
+
+struct huff_node {
+  int unsigned count;
+  huff_index_t index;
+  huff_index_t parent;
+  huff_index_t left;
+  huff_index_t right;
+  uint16_t encoded_ref_bit_size;
+  uint16_t depth;
+  uint32_t encoded_ref;
+  uint8_t direction_from_parent;
+  huff_index_t count_hword;
+};
+
+struct huff_tree {
+  bool is_left_leaf;
+  bool is_right_leaf;
+  huff_index_t left;
+  huff_index_t right;
+};
+
+size_t nsmbw_compress_huff_get_work_size(uint8_t huff_bit_size) {
+  const size_t huff_sym_size = 1 << huff_bit_size;
+
+  const size_t nodes_size = sizeof(struct huff_node) * huff_sym_size * 2;
+  const size_t encoded_nodes_size = sizeof(huff_index_t) * huff_sym_size * 2;
+  const size_t tree_size = sizeof(struct huff_tree) * huff_sym_size;
+  return nodes_size + encoded_nodes_size + tree_size;
+}
+
+void nsmbw_compress_huff_init_table(struct huff_table *table, void *work,
+                                    uint8_t huff_bit_size) {
+  const size_t huff_sym_size = 1 << huff_bit_size;
+
+  const size_t nodes_size = sizeof(struct huff_node) * huff_sym_size * 2;
+  const size_t encoded_nodes_size = sizeof(huff_index_t) * huff_sym_size * 2;
+  const size_t tree_size = sizeof(struct huff_tree) * huff_sym_size;
+
+  table->nodes = (struct huff_node *)work;
+  table->encoded_nodes = (huff_index_t *)((uint8_t *)work + nodes_size);
+  table->tree =
+      (struct huff_tree *)((uint8_t *)work + nodes_size + encoded_nodes_size);
+  table->tree_count = 1;
+
+  struct huff_node *const nodes = table->nodes;
+  static const struct huff_node initial_node = {.left = -1, .right = -1};
+
+  for (uint32_t i = 0; i < huff_sym_size * 2; i++) {
+    nodes[i] = initial_node;
+    nodes[i].index = i;
+  }
+
+  static const struct huff_tree initial_tree = {.is_left_leaf = 1,
+                                                .is_right_leaf = 1};
+
+  uint16_t *const encoded_nodes = table->encoded_nodes;
+  struct huff_tree *const tree = table->tree;
+
+  for (uint32_t i = 0; i < huff_sym_size; i++) {
+    encoded_nodes[i * 2 + 0] = 0;
+    encoded_nodes[i * 2 + 1] = 0;
+
+    tree[i] = initial_tree;
+  }
+}
+
+void nsmbw_compress_huff_count_data(struct huff_node *nodes,
+                                    uint8_t const *data, uint32_t size,
+                                    uint8_t huff_bit_size) {
+  if (huff_bit_size == 8) {
+    for (uint32_t i = 0; i < size; i++) {
+      nodes[data[i]].count++;
+    }
+    return;
+  }
+
+  // huffBitSize == 4
+  for (uint32_t i = 0; i < size; i++) {
+    uint8_t c = (data[i] & 0xF0) >> 4;
+    nodes[c].count++;
+
+    c = (data[i] & 0x0F) >> 0;
+    nodes[c].count++;
+  }
+}
+
+static void huff_add_parent_depth_to_table(struct huff_node *nodes,
+                                           huff_index_t left_index,
+                                           huff_index_t right_index) {
+  nodes[left_index].encoded_ref_bit_size++;
+  nodes[right_index].encoded_ref_bit_size++;
+
+  if (nodes[left_index].depth) {
+    huff_add_parent_depth_to_table(nodes, nodes[left_index].left,
+                                   nodes[left_index].right);
+  }
+
+  if (nodes[right_index].depth) {
+    huff_add_parent_depth_to_table(nodes, nodes[right_index].left,
+                                   nodes[right_index].right);
+  }
+}
+
+static void huff_add_code_to_table(struct huff_node *nodes, huff_index_t index,
+                                   uint32_t current_encoded_ref) {
+  assert(index != huff_invalid_node);
+  nodes[index].encoded_ref =
+      current_encoded_ref << 1 | nodes[index].direction_from_parent;
+
+  if (nodes[index].depth) {
+    huff_add_code_to_table(nodes, nodes[index].left, nodes[index].encoded_ref);
+    huff_add_code_to_table(nodes, nodes[index].right, nodes[index].encoded_ref);
+  }
+}
+
+static huff_index_t huff_add_count_hword_to_table(struct huff_node *nodes,
+                                                  huff_index_t index) {
+  huff_index_t a;
+  huff_index_t b;
+
+  switch (nodes[index].depth) {
+  case 0:
+    return 0;
+
+  case 1:
+    a = b = 0;
+    break;
+
+  default:
+    a = huff_add_count_hword_to_table(nodes, nodes[index].left);
+    b = huff_add_count_hword_to_table(nodes, nodes[index].right);
+    break;
+  }
+
+  return nodes[index].count_hword = a + b + 1;
+}
+
+uint16_t nsmbw_compress_huff_construct_tree(struct huff_node *nodes,
+                                            const uint32_t huff_sym_size) {
+  huff_index_t branch;
+  for (branch = huff_sym_size;; branch++) {
+    huff_index_t left = huff_invalid_node, right = huff_invalid_node;
+
+    for (huff_index_t i = 0; i < branch; ++i) {
+      if (nodes[i].count && !nodes[i].parent) {
+        if (left == huff_invalid_node || nodes[i].count < nodes[left].count) {
+          left = i;
+        }
+      }
+    }
+
+    for (huff_index_t i = 0; i < branch; ++i) {
+      if (nodes[i].count && !nodes[i].parent && i != left) {
+        if (right == huff_invalid_node || nodes[i].count < nodes[right].count) {
+          right = i;
+        }
+      }
+    }
+
+    if (right == huff_invalid_node) {
+      if (left == huff_invalid_node) {
+        left = 0;
+        nodes[left].count = 1;
+      }
+      if (branch == huff_sym_size) {
+        nodes[branch].count = nodes[left].count;
+        nodes[branch].left = left;
+        nodes[branch].right = left;
+        nodes[branch].depth = 1;
+
+        nodes[left].parent = branch;
+        nodes[left].direction_from_parent = 0;
+        nodes[left].encoded_ref_bit_size = 1;
+      } else {
+        branch--;
+      }
+      break;
+    }
+
+    nodes[branch].count = nodes[left].count + nodes[right].count;
+    nodes[branch].left = left;
+    nodes[branch].right = right;
+
+    if (nodes[left].depth > nodes[right].depth) {
+      nodes[branch].depth = nodes[left].depth + 1;
+    } else {
+      nodes[branch].depth = nodes[right].depth + 1;
+    }
+
+    nodes[left].parent = nodes[right].parent = branch;
+    nodes[left].direction_from_parent = 0;
+    nodes[right].direction_from_parent = 1;
+
+    huff_add_parent_depth_to_table(nodes, left, right);
+  }
+
+  huff_add_code_to_table(nodes, branch, 0);
+  huff_add_count_hword_to_table(nodes, branch);
+
+  return branch;
+}
+
+static void huff_set_one_node_offset(struct huff_table *table,
+                                     huff_index_t index, bool is_right) {
+
+  struct huff_node *const nodes = table->nodes;
+  huff_index_t *const encoded_nodes = table->encoded_nodes;
+  struct huff_tree *const tree = table->tree;
+  huff_index_t huff_tree_count = table->tree_count;
+
+  huff_index_t node;
+  if (is_right) {
+    node = tree[index].right;
+    tree[index].is_right_leaf = 0;
+  } else {
+    node = tree[index].left;
+    tree[index].is_left_leaf = 0;
+  }
+
+  static const huff_index_t left_leaf_flag = 0x8000;
+  static const huff_index_t right_leaf_flag = 0x4000;
+  huff_index_t encoded_value = 0;
+
+  if (!nodes[nodes[node].left].depth) {
+    encoded_value |= left_leaf_flag;
+
+    encoded_nodes[huff_tree_count * 2 + 0] = nodes[node].left;
+    tree[huff_tree_count].left = (uint8_t)nodes[node].left;
+    tree[huff_tree_count].is_left_leaf = false;
+  } else {
+    tree[huff_tree_count].left = nodes[node].left;
+  }
+
+  if (!nodes[nodes[node].right].depth) {
+    encoded_value |= right_leaf_flag;
+
+    encoded_nodes[huff_tree_count * 2 + 1] = nodes[node].right;
+    tree[huff_tree_count].right = (uint8_t)nodes[node].right;
+    tree[huff_tree_count].is_right_leaf = false;
+  } else {
+    tree[huff_tree_count].right = nodes[node].right;
+  }
+
+  encoded_value |= huff_tree_count - index - 1;
+
+  encoded_nodes[index * 2 + is_right] = encoded_value;
+  table->tree_count++;
+}
+
+static void huff_make_subset_huff_tree(struct huff_table *table,
+                                       huff_index_t index, bool is_right) {
+  huff_index_t i = table->tree_count;
+
+  huff_set_one_node_offset(table, index, is_right);
+
+  if (is_right) {
+    table->tree[index].is_right_leaf = false;
+  } else {
+    table->tree[index].is_left_leaf = false;
+  }
+
+  for (; i < table->tree_count; i++) {
+    if (table->tree[i].is_left_leaf) {
+      huff_set_one_node_offset(table, i, 0);
+      table->tree[i].is_left_leaf = false;
+    }
+
+    if (table->tree[i].is_right_leaf) {
+      huff_set_one_node_offset(table, i, 1);
+      table->tree[i].is_right_leaf = false;
+    }
+  }
+}
+
+static bool huff_remaining_node_can_set_offset(struct huff_table *table,
+                                               huff_index_t index,
+                                               uint8_t huff_bit_size) {
+  const int max_tree_size = 1 << (huff_bit_size - 2);
+  short encode_offset = max_tree_size - index;
+
+  for (huff_index_t i = 0; i < table->tree_count; ++i) {
+    if (table->tree[i].is_left_leaf) {
+      if (table->tree_count - i > encode_offset--) {
+        return false;
+      }
+    }
+
+    if (table->tree[i].is_right_leaf) {
+      if (table->tree_count - i > encode_offset--) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+void nsmbw_compress_huff_make_huff_tree(struct huff_table *table,
+                                        uint16_t construct_count,
+                                        uint8_t huff_bit_size) {
+  static const huff_index_t first_index = 0;
+
+  table->tree_count = 1;
+  table->tree->is_left_leaf = false;
+  table->tree->right = construct_count;
+  const int max_tree_size = 1 << (huff_bit_size - 2);
+
+loop:
+  while (true) {
+    uint16_t leaf_count = 0;
+
+    for (huff_index_t i = 0; i < table->tree_count; i++) {
+      if (table->tree[i].is_left_leaf) {
+        ++leaf_count;
+      }
+
+      if (table->tree[i].is_right_leaf) {
+        ++leaf_count;
+      }
+    }
+
+    huff_index_t branch_node = huff_invalid_node;
+    bool is_right;
+
+    for (huff_index_t i = 0; i < table->tree_count; i++) {
+      huff_index_t encoded_offset = table->tree_count - i;
+
+      if (table->tree[i].is_left_leaf) {
+        huff_index_t count_hword =
+            table->nodes[table->tree[i].left].count_hword;
+
+        if (count_hword + leaf_count <= max_tree_size &&
+            huff_remaining_node_can_set_offset(table, count_hword,
+                                               huff_bit_size)) {
+          if (count_hword != huff_invalid_node ||
+              encoded_offset > first_index) {
+            branch_node = i;
+            is_right = false;
+          }
+        }
+      }
+
+      if (table->tree[i].is_right_leaf) {
+        huff_index_t count_hword =
+            table->nodes[table->tree[i].right].count_hword;
+
+        if (count_hword + leaf_count <= max_tree_size &&
+            huff_remaining_node_can_set_offset(table, count_hword,
+                                               huff_bit_size)) {
+          if (count_hword != huff_invalid_node ||
+              encoded_offset > first_index) {
+            branch_node = i;
+            is_right = true;
+          }
+        }
+      }
+    }
+
+    if (branch_node == huff_invalid_node) {
+      break;
+    }
+    huff_make_subset_huff_tree(table, branch_node, is_right);
+  }
+
+  for (huff_index_t i = 0; i < table->tree_count; i++) {
+    huff_index_t best_count = 0;
+    bool is_right = false;
+
+    if (table->tree[i].is_left_leaf) {
+      best_count = table->nodes[table->tree[i].left].count_hword;
+    }
+
+    if (table->tree[i].is_right_leaf &&
+        table->nodes[table->tree[i].right].count_hword > best_count) {
+      is_right = true;
+    }
+
+    if (best_count || is_right) {
+      huff_set_one_node_offset(table, i, is_right);
+      goto loop;
+    }
+  }
+}
+
+uint32_t nsmbw_compress_huff_convert_data(struct huff_node *nodes,
+                                          uint8_t const *src, uint8_t *dst,
+                                          uint32_t size, uint32_t max_length,
+                                          uint8_t huff_bit_size) {
+  uint32_t write_value = 0;
+  uint32_t bit_offset = 0;
+  uint32_t length = 0;
+
+  for (uint32_t i = 0; i < size; ++i) {
+    uint8_t small_value;
+    uint8_t value = src[i];
+
+    if (huff_bit_size == 8) {
+      write_value = write_value << nodes[value].encoded_ref_bit_size |
+                    nodes[value].encoded_ref;
+      bit_offset += nodes[value].encoded_ref_bit_size;
+
+      if (length + bit_offset / 8 >= max_length) {
+        return 0;
+      }
+
+      for (uint32_t j = 0; j < bit_offset / 8; j++) {
+        dst[length++] = write_value >> (bit_offset - ((j + 1) << 3));
+      }
+
+      bit_offset %= 8;
+      continue;
+    }
+
+    for (uint32_t j = 0; j < 8 / 4; ++j) {
+      if (j != 0) {
+        small_value = value >> 4;
+      } else {
+        small_value = value & 0x0F;
+      }
+
+      write_value = (write_value << nodes[small_value].encoded_ref_bit_size) |
+                    nodes[small_value].encoded_ref;
+      bit_offset += nodes[small_value].encoded_ref_bit_size;
+
+      if (length + bit_offset / 8 >= max_length) {
+        return 0;
+      }
+
+      for (uint32_t k = 0; k < bit_offset / 8; ++k) {
+        dst[length++] = write_value >> (bit_offset - (k + 1) * 8);
+      }
+
+      bit_offset %= 8;
+    }
+  }
+
+  if (bit_offset) {
+    if (length + 1 >= max_length) {
+      return 0;
+    } else {
+      dst[length++] = write_value << (8 - bit_offset);
+    }
+  }
+
+  while (length % 4 != 0) {
+    dst[length++] = 0;
+  }
+
+  for (uint32_t i = 0; i < length; i += sizeof(uint32_t)) {
+    ncutil_write_le_u32(dst, i, ncutil_read_be_u32(dst, i));
+  }
+
+  return length;
+}
+
 bool nsmbw_compress_huff_encode(
     const uint8_t *src, uint8_t *dst, size_t src_length, size_t *dst_length,
     const struct nsmbw_compress_parameters *params) {
   void *work_buffer =
-      malloc(CX_COMPRESS_HUFFMAN_WORK_SIZE(params->huff_bit_size));
+      malloc(nsmbw_compress_huff_get_work_size(params->huff_bit_size));
   if (work_buffer == NULL) {
     nsmbw_compress_print_error(
         "Failed to allocate memory for Huffman compression work buffer: %s",
@@ -30,10 +495,70 @@ bool nsmbw_compress_huff_encode(
     return false;
   }
 
-  *dst_length = CXCompressHuffman(src, src_length, dst, params->huff_bit_size,
-                                  work_buffer);
+  const uint16_t huff_bit_size = params->huff_bit_size;
+  const uint16_t huff_sym_size = 1 << huff_bit_size;
+  const size_t max_dst_size = *dst_length;
+
+  struct huff_table table;
+
+  nsmbw_compress_huff_init_table(&table, work_buffer, huff_bit_size);
+  nsmbw_compress_huff_count_data(table.nodes, src, src_length, huff_bit_size);
+  uint16_t construct_size =
+      nsmbw_compress_huff_construct_tree(table.nodes, huff_sym_size);
+  nsmbw_compress_huff_make_huff_tree(&table, construct_size, huff_bit_size);
+
+  table.encoded_nodes[0] = --table.tree_count;
+
+  uint32_t length = 0;
+  if (src_length < 0x1000000) {
+    ncutil_write_le_u32(
+        dst, 0, src_length << 8 | CX_COMPRESSION_TYPE_HUFFMAN | huff_bit_size);
+    length += sizeof(uint32_t);
+  } else {
+    ncutil_write_le_u32(dst, 0, CX_COMPRESSION_TYPE_HUFFMAN | huff_bit_size);
+    ncutil_write_le_u32(dst, sizeof(uint32_t), src_length);
+    length += sizeof(uint32_t) + sizeof(uint32_t);
+  }
+
+  uint32_t tree_length_pos = length;
+
+  if (length + ((table.tree_count + 1) << 1) >= max_dst_size) {
+    nsmbw_compress_print_error("Output file is too much larger than the "
+                               "input file; aborting compression");
+    free(work_buffer);
+    return false;
+  }
+
+  for (uint32_t i = 0; i < (uint32_t)((table.tree_count + 1) << 1); ++i) {
+    uint8_t c = (table.encoded_nodes[i] & 0xC000) >> 8;
+    dst[length++] = table.encoded_nodes[i] | c;
+  }
+
+  while (length % 4 != 0) {
+    if (length % 2 != 0) {
+      ++table.tree_count;
+      ++dst[tree_length_pos];
+    }
+
+    dst[length++] = 0;
+  }
+
+  { // random block
+    uint32_t converted_size = nsmbw_compress_huff_convert_data(
+        table.nodes, src, dst + length, src_length, max_dst_size - length,
+        huff_bit_size);
+    if (!converted_size) {
+      nsmbw_compress_print_error("Output file is too much larger than the "
+                                 "input file; aborting compression");
+      free(work_buffer);
+      return false;
+    }
+
+    length += converted_size;
+  }
 
   free(work_buffer);
 
+  *dst_length = length;
   return *dst_length != 0;
 }

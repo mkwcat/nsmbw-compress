@@ -338,7 +338,6 @@ bool nsmbw_compress_lz_encode(
 
   const unsigned max_match_size = params->lz_extended ? 0x10110 : 0x12;
   const size_t max_dst_size = *dst_length;
-
   const uint8_t *dst_start = dst;
   const uint8_t *dst_end = dst + max_dst_size;
   const uint8_t *src_end = src + src_length;
@@ -373,7 +372,9 @@ bool nsmbw_compress_lz_encode(
                                              &match_distance, max_match_size);
       if (!match_size) {
         // Literal byte
-        if (dst + 1 >= dst_end) {
+        if (dst + 1 > dst_end) {
+          nsmbw_compress_print_error("Output file is too much larger than the "
+                                     "input file; aborting compression");
           free(work_buffer);
           return false;
         }
@@ -387,7 +388,9 @@ bool nsmbw_compress_lz_encode(
       // Encoded reference
       flags |= 1;
 
-      if (dst + 2 >= dst_end) {
+      if (dst + 2 > dst_end) {
+        nsmbw_compress_print_error("Output file is too much larger than the "
+                                   "input file; aborting compression");
         free(work_buffer);
         return false;
       }
@@ -407,6 +410,13 @@ bool nsmbw_compress_lz_encode(
         } else {
           match_size_byte = match_size - 0x1;
         }
+      }
+
+      if (dst + 2 > dst_end) {
+        nsmbw_compress_print_error("Output file is too much larger than the "
+                                   "input file; aborting compression");
+        free(work_buffer);
+        return false;
       }
 
       *dst++ = (match_size_byte << 4) | (match_distance - 1) >> 8;
