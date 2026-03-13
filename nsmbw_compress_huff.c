@@ -4,22 +4,200 @@
 #include "nsmbw_compress_internal.h"
 #include <assert.h>
 #include <errno.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
 typedef nsmbw_compress_huff_size_t huff_size_t;
 static const huff_size_t huff_invalid_node = nsmbw_compress_huff_invalid_node;
 
+bool nsmbw_compress_huff_verify_table(const uint16_t *table,
+                                      uint8_t huff_bit_size,
+                                      uint8_t flags_bit_offset) {
+  const uint16_t table_size = *table;
+
+  if (table_size > 1 << (huff_bit_size + 1)) {
+    return false;
+  }
+
+  const uint16_t *const start = table + 1;
+  const uint16_t *const end = table + table_size;
+
+  uint8_t e[sizeof(uint8_t) * 0x40] = {};
+
+  const uint16_t left_leaf_flag = 1 << (flags_bit_offset - 1);
+  const uint16_t right_leaf_flag = 1 << (flags_bit_offset - 2);
+  const uint16_t leaf_flags_mask = left_leaf_flag | right_leaf_flag;
+
+  uint16_t i = 1;
+  for (table = start; table < end; i++, table++) {
+    if (e[i / 8] & (1 << (i % 8))) {
+      continue;
+    }
+
+    int g = ((*table & ~leaf_flags_mask) + 1) << 1;
+    size_t h = ((size_t)table >> 1 << 1) + g;
+
+    if (*table == 0 && i >= table_size - 4) {
+      continue;
+    }
+
+    if ((size_t)h >= (size_t)end) {
+      return false;
+    }
+
+    if (*table & left_leaf_flag) {
+      unsigned j = (i & ~1) + g;
+      e[j / 8] |= (uint8_t)(1 << (j % 8));
+    }
+
+    if (*table & right_leaf_flag) {
+      unsigned k = (i & ~1) + g + 1;
+      e[k / 8] |= (uint8_t)(1 << (k % 8));
+    }
+  }
+
+  return true;
+}
+
+static bool huff_verify_table_u8(const uint8_t *table, uint8_t huff_bit_size) {
+  uint16_t table_size = *table;
+  uint16_t table_u16[1 << 9];
+  if (table_size >= 1 << huff_bit_size) {
+    nsmbw_compress_print_error(
+        "Huffman table exceeds maximum size for bit size %d: (%d > %d)",
+        huff_bit_size, table_size, 1 << huff_bit_size);
+    return false;
+  }
+  table_u16[0] = table_size = (table_size + 1) << 1;
+  for (uint16_t i = 1; i < table_size; ++i) {
+    table_u16[i] = table[i];
+  }
+
+  if (!nsmbw_compress_huff_verify_table(table_u16, huff_bit_size, 8)) {
+    nsmbw_compress_print_error("Invalid Huffman table in input data");
+    return false;
+  }
+  return true;
+}
+
 bool nsmbw_compress_huff_decode(
     const uint8_t *src, uint8_t *dst, size_t src_length, size_t *dst_length,
     const struct nsmbw_compress_parameters *params) {
   (void)params;
 
-  CXSecureResult result = CXSecureUncompressHuffman(src, src_length, dst);
-  if (result != CX_SECURE_ERR_OK) {
-    nsmbw_compress_print_cx_error(true, result);
+  const uint8_t *const src_end = src + src_length;
+  const uint8_t *const dst_start = dst;
+
+  if (src + sizeof(uint32_t) + sizeof(uint8_t) > src_end) {
+    nsmbw_compress_print_error(
+        "Input file is too small to be a valid compressed Huffman file");
     return false;
   }
+
+  const uint32_t header = ncutil_read_le_u32(src, 0);
+  const uint8_t huff_bit_size = header & 0xF;
+  uint32_t read_size = header >> 8;
+
+  if (huff_bit_size != 4 && huff_bit_size != 8) {
+    nsmbw_compress_print_error(
+        "Invalid Huffman bit size in input data: %d (expected 4 or 8)",
+        huff_bit_size);
+    return false;
+  }
+
+  src += sizeof(uint32_t);
+
+  if (read_size == 0) {
+    if (src + sizeof(uint32_t) + sizeof(uint8_t) > src_end) {
+      nsmbw_compress_print_error(
+          "Input file is too small to be a valid compressed Huffman file");
+      return false;
+    }
+    read_size = ncutil_read_le_u32(src, 4);
+
+    src += sizeof(uint32_t);
+  }
+
+  const uint32_t size = read_size;
+  const uint8_t *const dst_end = dst + size;
+  const uint8_t *const table = src + 1;
+  const uint16_t table_size = (*src + 1) << 1;
+
+  if (src + table_size > src_end) {
+    nsmbw_compress_print_error(
+        "Huffman table is too large to fit inside the input data");
+    return false;
+  }
+
+  if (!huff_verify_table_u8(src, huff_bit_size)) {
+    return false;
+  }
+
+  src += table_size;
+
+  const uint8_t *table_cur = table;
+  uint32_t decoded = 0;
+  int word_it = 0;
+  // 32 / huff_bit_size
+  const int word_size = (huff_bit_size & 4) + 4;
+
+  while (dst < dst_end) {
+    if (src + sizeof(uint32_t) > src_end) {
+      nsmbw_compress_print_error(
+          "Attempt to read off the end of the input Huffman data");
+      return false;
+    }
+
+    uint32_t value = ncutil_read_le_u32(src, 0);
+    src += sizeof(uint32_t);
+
+    for (int i = 32; i > 0; i--, value <<= 1) {
+      const int branch = value >> 31;
+      const int sym = *table_cur << branch;
+
+      static const uint16_t left_leaf_flag = 1 << (8 - 1);
+      static const uint16_t right_leaf_flag = 1 << (8 - 2);
+      static const uint16_t leaf_flags_mask = left_leaf_flag | right_leaf_flag;
+
+      const uint8_t *table_align =
+          (const uint8_t *)ncutil_align_down_ptr(2, table_cur);
+      table_cur =
+          table_align + (((*table_cur & ~leaf_flags_mask) + 1) << 1) + branch;
+
+      if (!(sym & left_leaf_flag)) {
+        continue;
+      }
+      decoded >>= huff_bit_size;
+      decoded |= *table_cur << (32 - huff_bit_size);
+      table_cur = table;
+      word_it++;
+
+      if (dst + (word_it * huff_bit_size >> 3) >= dst_end) {
+        decoded >>= huff_bit_size * (word_size - word_it);
+      } else if (word_it != word_size) {
+        continue;
+      }
+
+      *dst++ = decoded & 0xFF;
+      if (dst < dst_end) {
+        *dst++ = decoded >> 8;
+      }
+      if (dst < dst_end) {
+        *dst++ = decoded >> 16;
+      }
+      if (dst < dst_end) {
+        *dst++ = decoded >> 24;
+      }
+      if (dst >= dst_end) {
+        break;
+      }
+      word_it = 0;
+    }
+  }
+
+  assert(dst == dst_end);
+  *dst_length = size;
   return true;
 }
 

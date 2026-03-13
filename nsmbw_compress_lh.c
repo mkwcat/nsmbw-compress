@@ -34,7 +34,7 @@ bool nsmbw_compress_lh_decode(const uint8_t *src, uint8_t *dst,
   return true;
 }
 
-static const uint32_t lh_encode_lz_window_size = 0x8000;
+static const uint32_t lh_encode_lz_window_size = 0x10000u;
 
 static size_t lz_encode(const uint8_t *restrict src, uint8_t *restrict dst,
                         size_t src_length, size_t dst_length,

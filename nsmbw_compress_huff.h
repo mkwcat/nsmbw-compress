@@ -41,6 +41,10 @@ struct nsmbw_compress_huff_tree {
 
 #define nsmbw_compress_huff_sym_size(huff_bit_size) (1 << (huff_bit_size))
 
+bool nsmbw_compress_huff_verify_table(const uint16_t *table,
+                                      uint8_t huff_bit_size,
+                                      uint8_t flags_bit_offset);
+
 size_t nsmbw_compress_huff_get_work_size(uint8_t huff_bit_size);
 
 void nsmbw_compress_huff_init_table(struct nsmbw_compress_huff_table *table,

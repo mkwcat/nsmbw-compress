@@ -104,9 +104,18 @@ static inline size_t ncutil_align_up(int alignment, size_t value) {
   return (value + alignment - 1) & ~(alignment - 1);
 }
 
+static inline size_t ncutil_align_down(int alignment, size_t value) {
+  return value & ~(alignment - 1);
+}
+
 static inline const void *ncutil_align_up_ptr(int alignment,
                                               const void *value) {
   return (const void *)(((uintptr_t)value + alignment - 1) & ~(alignment - 1));
+}
+
+static inline const void *ncutil_align_down_ptr(int alignment,
+                                                const void *value) {
+  return (const void *)((uintptr_t)value & ~(alignment - 1));
 }
 
 struct ncutil_bit_writer {

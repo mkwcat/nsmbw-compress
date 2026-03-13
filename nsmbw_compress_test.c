@@ -31,7 +31,7 @@ static const char *compression_type_names[] = {
     [nsmbw_compress_type_szs] = "szs",
 };
 
-#define BUFFER_SIZE 0x1000
+#define BUFFER_SIZE 0x1001
 
 static void *generated_uncompressed_data;
 static void *compressed_data;
