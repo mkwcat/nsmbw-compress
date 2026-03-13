@@ -24,7 +24,7 @@ bool nsmbw_compress_huff_decode(
 }
 
 size_t nsmbw_compress_huff_get_work_size(uint8_t huff_bit_size) {
-  const size_t huff_sym_size = 1 << huff_bit_size;
+  const size_t huff_sym_size = nsmbw_compress_huff_sym_size(huff_bit_size);
 
   const size_t nodes_size =
       sizeof(struct nsmbw_compress_huff_node) * huff_sym_size * 2;
@@ -36,7 +36,7 @@ size_t nsmbw_compress_huff_get_work_size(uint8_t huff_bit_size) {
 
 void nsmbw_compress_huff_init_table(struct nsmbw_compress_huff_table *table,
                                     void *work, uint8_t huff_bit_size) {
-  const size_t huff_sym_size = 1 << huff_bit_size;
+  const size_t huff_sym_size = nsmbw_compress_huff_sym_size(huff_bit_size);
 
   const size_t nodes_size =
       sizeof(struct nsmbw_compress_huff_node) * huff_sym_size * 2;
@@ -52,8 +52,10 @@ void nsmbw_compress_huff_init_table(struct nsmbw_compress_huff_table *table,
   table->tree_count = 1;
 
   struct nsmbw_compress_huff_node *const nodes = table->nodes;
-  static const struct nsmbw_compress_huff_node initial_node = {.left = -1,
-                                                               .right = -1};
+  static const struct nsmbw_compress_huff_node initial_node = {
+      .left = huff_invalid_node,
+      .right = huff_invalid_node,
+  };
 
   for (uint32_t i = 0; i < huff_sym_size * 2; i++) {
     nodes[i] = initial_node;
@@ -61,7 +63,9 @@ void nsmbw_compress_huff_init_table(struct nsmbw_compress_huff_table *table,
   }
 
   static const struct nsmbw_compress_huff_tree initial_tree = {
-      .is_left_leaf = 1, .is_right_leaf = 1};
+      .is_left_leaf = true,
+      .is_right_leaf = true,
+  };
 
   uint16_t *const encoded_nodes = table->encoded_nodes;
   struct nsmbw_compress_huff_tree *const tree = table->tree;
@@ -117,7 +121,7 @@ static void huff_add_code_to_table(struct nsmbw_compress_huff_node *nodes,
                                    uint32_t current_encoded_ref) {
   assert(index != huff_invalid_node);
   nodes[index].encoded_ref =
-      current_encoded_ref << 1 | nodes[index].direction_from_parent;
+      current_encoded_ref << 1 | nodes[index].is_right_of_parent;
 
   if (nodes[index].depth) {
     huff_add_code_to_table(nodes, nodes[index].left, nodes[index].encoded_ref);
@@ -183,7 +187,7 @@ nsmbw_compress_huff_construct_tree(struct nsmbw_compress_huff_node *nodes,
         nodes[branch].depth = 1;
 
         nodes[left].parent = branch;
-        nodes[left].direction_from_parent = 0;
+        nodes[left].is_right_of_parent = false;
         nodes[left].encoded_ref_bit_size = 1;
       } else {
         branch--;
@@ -202,8 +206,8 @@ nsmbw_compress_huff_construct_tree(struct nsmbw_compress_huff_node *nodes,
     }
 
     nodes[left].parent = nodes[right].parent = branch;
-    nodes[left].direction_from_parent = 0;
-    nodes[right].direction_from_parent = 1;
+    nodes[left].is_right_of_parent = false;
+    nodes[right].is_right_of_parent = true;
 
     huff_add_parent_depth_to_table(nodes, left, right);
   }
@@ -375,19 +379,19 @@ loop:
   }
 
   for (huff_size_t i = 0; i < table->tree_count; i++) {
-    huff_size_t best_count = 0;
     bool is_right = false;
 
+    huff_size_t left_count = 0;
     if (table->tree[i].is_left_leaf) {
-      best_count = table->nodes[table->tree[i].left].count_hword;
+      left_count = table->nodes[table->tree[i].left].count_hword;
     }
 
     if (table->tree[i].is_right_leaf &&
-        table->nodes[table->tree[i].right].count_hword > best_count) {
+        table->nodes[table->tree[i].right].count_hword > left_count) {
       is_right = true;
     }
 
-    if (best_count || is_right) {
+    if (left_count > 0 || is_right) {
       huff_set_one_node_offset(table, i, is_right);
       goto loop;
     }
@@ -477,7 +481,7 @@ bool nsmbw_compress_huff_encode(
   }
 
   const uint16_t huff_bit_size = params->huff_bit_size;
-  const uint16_t huff_sym_size = 1 << huff_bit_size;
+  const uint16_t huff_sym_size = nsmbw_compress_huff_sym_size(huff_bit_size);
   const size_t max_dst_size = *dst_length;
 
   struct nsmbw_compress_huff_table table;

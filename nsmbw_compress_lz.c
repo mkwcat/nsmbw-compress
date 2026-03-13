@@ -1,3 +1,4 @@
+#include "nsmbw_compress_lz.h"
 #include "cx.h"
 #include "nsmbw_compress.h"
 #include "nsmbw_compress_internal.h"
@@ -136,31 +137,11 @@ bool nsmbw_compress_lz_decode(const uint8_t *src, uint8_t *dst,
 }
 
 // Must be signed
-typedef int lz_size_t;
-const lz_size_t lz_invalid_offset = -1;
+typedef nsmbw_compress_lz_size_t lz_size_t;
+static const lz_size_t lz_invalid_offset = nsmbw_compress_lz_invalid_offset;
 
-struct nsmbw_compress_lz_context {
-  // The current offset in the skip table
-  lz_size_t window_pos;
-  // Number of entries populated in the skip table
-  lz_size_t window_size;
-  // The next window offset for the byte value, indexed by the current window
-  // offset
-  lz_size_t *skip_table_next;
-  // The previous window offset for the byte value, indexed by the current
-  // window offset. If this is not NULL, the skip table is reversed for
-  // searching from the tail instead of the head. This is useful if nearer
-  // references are preferred, such as with LH compression due to the smaller
-  // bit size.
-  lz_size_t *skip_table_prev;
-  // The head of the skip table, indexed by the byte value
-  lz_size_t *skip_table_head;
-  // The tail of the skip table, indexed by the byte value
-  lz_size_t *skip_table_tail;
-  lz_size_t max_window_size;
-};
-
-static size_t lz_get_work_size(lz_size_t window_size, bool reverse_skip_table) {
+size_t nsmbw_compress_lz_get_work_size(lz_size_t window_size,
+                                       bool reverse_skip_table) {
   static const size_t skip_table_head_size = UCHAR_MAX + 1;
   static const size_t skip_table_tail_size = skip_table_head_size;
   const size_t skip_table_next_size = window_size;
@@ -172,9 +153,9 @@ static size_t lz_get_work_size(lz_size_t window_size, bool reverse_skip_table) {
          sizeof(lz_size_t);
 }
 
-static void lz_init_context(struct nsmbw_compress_lz_context *context,
-                            void *work, lz_size_t window_size,
-                            bool reverse_skip_table) {
+void nsmbw_compress_lz_init_context(struct nsmbw_compress_lz_context *context,
+                                    void *work, lz_size_t window_size,
+                                    bool reverse_skip_table) {
   static const size_t skip_table_head_size = UCHAR_MAX + 1;
   static const size_t skip_table_tail_size = skip_table_head_size;
   const size_t skip_table_next_size = window_size;
@@ -193,8 +174,8 @@ static void lz_init_context(struct nsmbw_compress_lz_context *context,
 
   // Initialize context
   for (int i = 0; i < skip_table_head_size; ++i) {
-    context->skip_table_head[i] = -1;
-    context->skip_table_tail[i] = -1;
+    context->skip_table_head[i] = lz_invalid_offset;
+    context->skip_table_tail[i] = lz_invalid_offset;
   }
 
   context->window_pos = 0;
@@ -202,10 +183,11 @@ static void lz_init_context(struct nsmbw_compress_lz_context *context,
   context->max_window_size = window_size;
 }
 
-static uint32_t
-lz_search_window(struct nsmbw_compress_lz_context const *context,
-                 uint8_t const *data, uint32_t data_size,
-                 uint16_t *restrict match_distance, uint32_t max_match_size) {
+uint32_t
+nsmbw_compress_lz_search_window(const struct nsmbw_compress_lz_context *context,
+                                const uint8_t *data, uint32_t data_size,
+                                uint16_t *restrict match_distance,
+                                uint32_t max_match_size) {
   const lz_size_t window_pos = context->window_pos;
   const lz_size_t window_size = context->window_size;
 
@@ -233,7 +215,7 @@ lz_search_window(struct nsmbw_compress_lz_context const *context,
 
   uint32_t best_match_offset;
   uint32_t best_match_size = 2;
-  for (; it != -1; it = st_next[it]) {
+  for (; it != lz_invalid_offset; it = st_next[it]) {
     const uint8_t *match_data;
     if (it < window_pos) {
       match_data = data - window_pos + it;
@@ -268,15 +250,15 @@ lz_search_window(struct nsmbw_compress_lz_context const *context,
   return best_match_size;
 }
 
-static void lz_slide(struct nsmbw_compress_lz_context *table,
-                     uint8_t const *data, uint32_t length) {
-  lz_size_t *restrict const st_head = table->skip_table_head;
-  lz_size_t *restrict const st_next = table->skip_table_next;
-  lz_size_t *restrict const st_tail = table->skip_table_tail;
-  lz_size_t *restrict const st_prev = table->skip_table_prev;
-  lz_size_t window_pos = table->window_pos;
-  lz_size_t window_size = table->window_size;
-  const lz_size_t max_window_size = table->max_window_size;
+void nsmbw_compress_lz_slide(struct nsmbw_compress_lz_context *context,
+                             const uint8_t *data, uint32_t length) {
+  lz_size_t *restrict const st_head = context->skip_table_head;
+  lz_size_t *restrict const st_next = context->skip_table_next;
+  lz_size_t *restrict const st_tail = context->skip_table_tail;
+  lz_size_t *restrict const st_prev = context->skip_table_prev;
+  lz_size_t window_pos = context->window_pos;
+  lz_size_t window_size = context->window_size;
+  const lz_size_t max_window_size = context->max_window_size;
 
   for (uint32_t i = 0; i < length; i++, data++) {
     const uint8_t value = *data;
@@ -318,8 +300,8 @@ static void lz_slide(struct nsmbw_compress_lz_context *table,
     }
   }
 
-  table->window_pos = window_pos;
-  table->window_size = window_size;
+  context->window_pos = window_pos;
+  context->window_size = window_size;
 }
 
 bool nsmbw_compress_lz_encode(
@@ -328,7 +310,8 @@ bool nsmbw_compress_lz_encode(
     const struct nsmbw_compress_parameters *restrict params) {
   static const uint32_t window_size = 0x1000;
 
-  void *work_buffer = malloc(lz_get_work_size(window_size, false));
+  void *work_buffer =
+      malloc(nsmbw_compress_lz_get_work_size(window_size, false));
   if (work_buffer == NULL) {
     nsmbw_compress_print_error(
         "Failed to allocate memory for LZ compression work buffer: %s",
@@ -354,8 +337,8 @@ bool nsmbw_compress_lz_encode(
     dst += sizeof(uint32_t) + sizeof(uint32_t);
   }
 
-  struct nsmbw_compress_lz_context table;
-  lz_init_context(&table, work_buffer, window_size, false);
+  struct nsmbw_compress_lz_context context;
+  nsmbw_compress_lz_init_context(&context, work_buffer, window_size, false);
 
   while (src < src_end) {
     uint8_t flags = 0;
@@ -368,8 +351,8 @@ bool nsmbw_compress_lz_encode(
       }
 
       uint16_t match_distance;
-      uint32_t match_size = lz_search_window(&table, src, src_end - src,
-                                             &match_distance, max_match_size);
+      uint32_t match_size = nsmbw_compress_lz_search_window(
+          &context, src, src_end - src, &match_distance, max_match_size);
       if (!match_size) {
         // Literal byte
         if (dst + 1 > dst_end) {
@@ -379,7 +362,7 @@ bool nsmbw_compress_lz_encode(
           return false;
         }
 
-        lz_slide(&table, src, 1);
+        nsmbw_compress_lz_slide(&context, src, 1);
         *dst++ = *src++;
 
         continue;
@@ -422,7 +405,7 @@ bool nsmbw_compress_lz_encode(
       *dst++ = (match_size_byte << 4) | (match_distance - 1) >> 8;
       *dst++ = match_distance - 1;
 
-      lz_slide(&table, src, match_size);
+      nsmbw_compress_lz_slide(&context, src, match_size);
 
       src += match_size;
     }

@@ -3,6 +3,18 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+void nsmbw_compress_print_error(const char *message, ...);
+
+void nsmbw_compress_print_warning(const char *message, ...);
+
+void nsmbw_compress_print_verbose(const char *message, ...);
+
+void nsmbw_compress_print_cx_error(bool decompression, int result);
+
 static inline uint32_t ncutil_read_be_u32(const void *data, size_t offset) {
   const uint8_t *bytes = (const uint8_t *)data + offset;
   return ((uint32_t)bytes[0] << 24) | ((uint32_t)bytes[1] << 16) |
@@ -62,7 +74,7 @@ static inline size_t ncutil_write_le_u16(void *data, size_t offset,
 }
 
 static inline int ncutil_popcount_u32(uint32_t value) {
-#if __has_builtin(__builtin_popcount)
+#if defined(__has_builtin) && __has_builtin(__builtin_popcount)
   return __builtin_popcount(value);
 #else
   int count = 0;
@@ -75,11 +87,11 @@ static inline int ncutil_popcount_u32(uint32_t value) {
 }
 
 static inline int ncutil_clz_u32(uint32_t value) {
-#if __has_builtin(__builtin_clz)
+#if defined(__has_builtin) && __has_builtin(__builtin_clz)
   return value ? __builtin_clz(value) : 32;
 #else
   int count = 0;
-  uint32_t bit = 1U << 31;
+  uint32_t bit = 1u << 31;
   while (bit && !(value & bit)) {
     count++;
     bit >>= 1;
@@ -97,10 +109,43 @@ static inline const void *ncutil_align_up_ptr(int alignment,
   return (const void *)(((uintptr_t)value + alignment - 1) & ~(alignment - 1));
 }
 
-void nsmbw_compress_print_error(const char *message, ...);
+struct ncutil_bit_writer {
+  uint8_t *data;
+  uint32_t offset;
+  uint8_t bit;
+};
 
-void nsmbw_compress_print_warning(const char *message, ...);
+static inline void ncutil_bit_writer_write(struct ncutil_bit_writer *writer,
+                                           uint32_t value, int bit_size) {
 
-void nsmbw_compress_print_verbose(const char *message, ...);
+  value &= (1u << bit_size) - 1u;
+  if (writer->bit) {
+    value |= writer->data[writer->offset] >> (8 - writer->bit) << bit_size;
+  }
+  writer->bit = writer->bit + bit_size;
+  while (writer->bit >= 8) {
+    writer->data[writer->offset++] = value >> (writer->bit -= 8);
+  }
+  if (writer->bit) {
+    writer->data[writer->offset] = value << (8 - writer->bit);
+  }
+}
 
-void nsmbw_compress_print_cx_error(bool decompression, int result);
+static inline void ncutil_bit_writer_flush(struct ncutil_bit_writer *writer) {
+  if (writer->bit) {
+    writer->offset++;
+    writer->bit = 0;
+  }
+}
+
+static inline void ncutil_bit_writer_pad(struct ncutil_bit_writer *writer,
+                                         int byte_alignment) {
+  ncutil_bit_writer_flush(writer);
+  while (writer->offset % byte_alignment != 0) {
+    writer->data[writer->offset++] = 0;
+  }
+}
+
+#ifdef __cplusplus
+} // extern "C"
+#endif
