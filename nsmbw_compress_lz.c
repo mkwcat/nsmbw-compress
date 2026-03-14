@@ -1,7 +1,7 @@
 #include "nsmbw_compress_lz.h"
-#include "cx.h"
 #include "nsmbw_compress.h"
 #include "nsmbw_compress_internal.h"
+#include <assert.h>
 #include <errno.h>
 #include <limits.h>
 #include <stdint.h>
@@ -13,8 +13,14 @@ bool nsmbw_compress_lz_decode(const uint8_t *src, uint8_t *dst,
                               const struct nsmbw_compress_parameters *params) {
   (void)params;
 
+  if (src_length < sizeof(uint32_t)) {
+    nsmbw_compress_print_error(
+        "Input file is too small to be a valid compressed LZ file");
+    return false;
+  }
+
   const uint32_t header = ncutil_read_le_u32(src, 0);
-  const CXCompressionType type = header & CX_COMPRESSION_TYPE_MASK;
+  const enum nsmbw_compress_cx_type type = header & CX_COMPRESSION_TYPE_MASK;
   if (type != CX_COMPRESSION_TYPE_LEMPEL_ZIV) {
     nsmbw_compress_print_error("Input data is not a CX-LZ file");
     return false;
@@ -23,20 +29,23 @@ bool nsmbw_compress_lz_decode(const uint8_t *src, uint8_t *dst,
   const uint8_t *const src_end = src + src_length;
   uint8_t *const dst_start = dst;
 
-  uint32_t size = header >> 8;
+  uint32_t read_size = header >> 8;
   src += sizeof(uint32_t);
-  if (size == 0) {
+  if (read_size == 0) {
     if (src_length < 8) {
       nsmbw_compress_print_error(
           "Input data is too small to be a valid CX-LZ file");
       return false;
     }
-    size = ncutil_read_le_u32(src, 0);
-    if (size == 0) {
-      nsmbw_compress_print_error("Invalid zero size in CX file header (LZ)");
-      return false;
-    }
+    read_size = ncutil_read_le_u32(src, 0);
     src += sizeof(uint32_t);
+  }
+
+  assert(read_size <= *dst_length);
+  if (read_size > *dst_length) {
+    nsmbw_compress_print_error(
+        "Output buffer is too small for decompressed data in LZ file");
+    return false;
   }
 
   uint8_t option = header & 0x0F;
@@ -46,6 +55,7 @@ bool nsmbw_compress_lz_decode(const uint8_t *src, uint8_t *dst,
     return false;
   }
 
+  const uint32_t size = read_size;
   const uint8_t *const dst_end = dst + size;
 
   while (dst < dst_end) {

@@ -15,6 +15,8 @@ void nsmbw_compress_print_verbose(const char *message, ...);
 
 void nsmbw_compress_print_cx_error(bool decompression, int result);
 
+#define ncutil_array_size(arr) (sizeof(arr) / sizeof((arr)[0]))
+
 static inline uint32_t ncutil_read_be_u32(const void *data, size_t offset) {
   const uint8_t *bytes = (const uint8_t *)data + offset;
   return ((uint32_t)bytes[0] << 24) | ((uint32_t)bytes[1] << 16) |

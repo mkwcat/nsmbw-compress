@@ -1,6 +1,4 @@
 #include "nsmbw_compress.h"
-#include "cx.h"
-#include "macros.h"
 #include "nsmbw_compress_internal.h"
 #include <assert.h>
 #include <errno.h>
@@ -11,6 +9,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+static const char *executable_name = "nsmbw-compress";
+
+static const char *input_file_path = NULL;
+
+static const int compress_dst_scale = 4;
 
 static const nsmbw_compress_function compress_functions[][2] = {
     [nsmbw_compress_type_lz] = {nsmbw_compress_lz_encode,
@@ -155,22 +159,18 @@ static const struct nsmbw_compress_argument arguments[] = {
     },
 };
 
-static const size_t argument_count = ARRAY_LENGTH(arguments);
+static const size_t argument_count = ncutil_array_size(arguments);
 
 static union nsmbw_compress_argument_value
-    argument_values[ARRAY_LENGTH(arguments)];
-static bool argument_specified[ARRAY_LENGTH(arguments)] = {0};
-
-static const char *input_file_path = NULL;
-
-static const char *executable_name = "nsmbw-compress";
+    argument_values[ncutil_array_size(arguments)];
+static bool argument_specified[ncutil_array_size(arguments)] = {0};
 
 // Weird way of doing this, anything here will get freed by cleanup_disposable()
 // on exit.
 static void *disposable_buffers[16] = {};
 
 static void *malloc_disposable(size_t size) {
-  for (size_t i = 0; i < ARRAY_LENGTH(disposable_buffers); ++i) {
+  for (size_t i = 0; i < ncutil_array_size(disposable_buffers); ++i) {
     if (disposable_buffers[i] == NULL) {
       return disposable_buffers[i] = malloc(size);
     }
@@ -180,7 +180,7 @@ static void *malloc_disposable(size_t size) {
 }
 
 static int cleanup_disposable(int result) {
-  for (size_t i = 0; i < ARRAY_LENGTH(disposable_buffers); ++i) {
+  for (size_t i = 0; i < ncutil_array_size(disposable_buffers); ++i) {
     free(disposable_buffers[i]);
     disposable_buffers[i] = NULL;
   }
@@ -278,7 +278,7 @@ static int exit_print_help() {
   }
   printf("Supported types for compression:\n"
          "  ");
-  for (size_t i = 0; i < ARRAY_LENGTH(compression_type_names); i++) {
+  for (size_t i = 0; i < ncutil_array_size(compression_type_names); i++) {
     if (compress_functions[i][0] != NULL) {
       printf("%s ", compression_type_names[i]);
     }
@@ -286,7 +286,7 @@ static int exit_print_help() {
   printf("\n"
          "Supported types for decompression:\n"
          "  ");
-  for (size_t i = 0; i < ARRAY_LENGTH(compression_type_names); i++) {
+  for (size_t i = 0; i < ncutil_array_size(compression_type_names); i++) {
     if (compress_functions[i][1] != NULL) {
       printf("%s ", compression_type_names[i]);
     }
@@ -429,7 +429,7 @@ static bool get_uncompress_info(const void *input_data, size_t input_size,
     return true;
   }
 
-  CXCompressionType cx_type = header & CX_COMPRESSION_TYPE_MASK;
+  enum nsmbw_compress_cx_type cx_type = header & CX_COMPRESSION_TYPE_MASK;
   uint8_t cx_stat = header & 0x0F;
   switch (cx_type) {
   case CX_COMPRESSION_TYPE_LEMPEL_ZIV:
@@ -669,7 +669,7 @@ static int main_compress(const void *input_file, size_t input_file_size,
     argument_values[argument_index_output].string_value = output_path;
   }
 
-  size_t dst_length = 0x1000 + input_file_size * CX_COMPRESS_DST_SCALE;
+  size_t dst_length = 0x1000 + input_file_size * compress_dst_scale;
   void *compressed_data = malloc_disposable(dst_length);
   if (compressed_data == NULL) {
     nsmbw_compress_print_error(

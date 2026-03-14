@@ -1,5 +1,4 @@
 #include "nsmbw_compress_huff.h"
-#include "cx.h"
 #include "nsmbw_compress.h"
 #include "nsmbw_compress_internal.h"
 #include <assert.h>
@@ -96,6 +95,11 @@ bool nsmbw_compress_huff_decode(
   }
 
   const uint32_t header = ncutil_read_le_u32(src, 0);
+  const enum nsmbw_compress_cx_type type = header & CX_COMPRESSION_TYPE_MASK;
+  if (type != CX_COMPRESSION_TYPE_HUFFMAN) {
+    nsmbw_compress_print_error("Input data is not a CX-Huffman file");
+    return false;
+  }
   const uint8_t huff_bit_size = header & 0xF;
   uint32_t read_size = header >> 8;
 
@@ -117,6 +121,13 @@ bool nsmbw_compress_huff_decode(
     read_size = ncutil_read_le_u32(src, 0);
 
     src += sizeof(uint32_t);
+  }
+
+  assert(read_size <= *dst_length);
+  if (read_size > *dst_length) {
+    nsmbw_compress_print_error(
+        "Output buffer is too small for decompressed data in Huffman file");
+    return false;
   }
 
   const uint32_t size = read_size;

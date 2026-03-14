@@ -1,4 +1,3 @@
-#include "cx.h"
 #include "nsmbw_compress.h"
 #include "nsmbw_compress_internal.h"
 #include <assert.h>
@@ -21,6 +20,10 @@ struct range_coder_state {
   uint8_t at_0x0c;
   int32_t at_0x10;
 };
+
+static size_t range_coder_info_get_work_size(uint8_t rc_bit_size) {
+  return (1 << rc_bit_size) * sizeof(uint32_t) * 2;
+}
 
 static void range_coder_info_init(struct range_coder_info *rc_info,
                                   uint8_t rc_bit_size, uint32_t *work) {
@@ -152,17 +155,22 @@ bool nsmbw_compress_lrc_decode(const uint8_t *src, uint8_t *dst,
 
   if (src + sizeof(uint32_t) > src_end) {
     nsmbw_compress_print_error(
-        "Input file is too small to be a valid compressed run-length file");
+        "Input file is too small to be a valid compressed LRC file");
     return false;
   }
 
   const uint32_t header = ncutil_read_le_u32(src, 0);
+  const enum nsmbw_compress_cx_type type = header & CX_COMPRESSION_TYPE_MASK;
+  if (type != CX_COMPRESSION_TYPE_LEMPEL_ZIV) {
+    nsmbw_compress_print_error("Input data is not a CX-LRC file");
+    return false;
+  }
   const uint8_t option = header & 0xF;
   uint32_t read_size = header >> 8;
 
   if (option != 0) {
     nsmbw_compress_print_error(
-        "Unknown run-length option in input data: %d (expected 0)", option);
+        "Unknown LRC option in input data: %d (expected 0)", option);
     return false;
   }
 
@@ -171,7 +179,7 @@ bool nsmbw_compress_lrc_decode(const uint8_t *src, uint8_t *dst,
   if (read_size == 0) {
     if (src + sizeof(uint32_t) > src_end) {
       nsmbw_compress_print_error(
-          "Input file is too small to be a valid compressed run-length file");
+          "Input file is too small to be a valid compressed LRC file");
       return false;
     }
     read_size = ncutil_read_le_u32(src, 0);
@@ -182,7 +190,7 @@ bool nsmbw_compress_lrc_decode(const uint8_t *src, uint8_t *dst,
   assert(read_size <= *dst_length);
   if (read_size > *dst_length) {
     nsmbw_compress_print_error(
-        "Output buffer is too small for decompressed data in run-length file");
+        "Output buffer is too small for decompressed data in LRC file");
     return false;
   }
 
@@ -191,8 +199,8 @@ bool nsmbw_compress_lrc_decode(const uint8_t *src, uint8_t *dst,
 
   unsigned dst_pos = 0;
 
-  uint32_t *work_buffer =
-      (uint32_t *)malloc(CX_SECURE_UNCOMPRESS_LRC_WORK_SIZE);
+  uint32_t *work_buffer = (uint32_t *)malloc(
+      range_coder_info_get_work_size(9) + range_coder_info_get_work_size(12));
   if (work_buffer == NULL) {
     nsmbw_compress_print_error(
         "Failed to allocate memory for LRC decompression work buffer: %s",
@@ -204,14 +212,16 @@ bool nsmbw_compress_lrc_decode(const uint8_t *src, uint8_t *dst,
   range_coder_info_init(&sym_info, 9, work_buffer);
 
   struct range_coder_info dst_info;
-  range_coder_info_init(&dst_info, 12, work_buffer + 0x400);
+  range_coder_info_init(
+      &dst_info, 12,
+      work_buffer + (range_coder_info_get_work_size(9) / sizeof(uint32_t)));
 
   struct range_coder_state state;
   range_coder_state_init(&state);
 
   if (src + sizeof(uint32_t) > src_end) {
     nsmbw_compress_print_error(
-        "Input file is too small to be a valid compressed run-length file");
+        "Input file is too small to be a valid compressed LRC file");
     free(work_buffer);
     return false;
   }

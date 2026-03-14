@@ -91,6 +91,17 @@ nsmbw_compress_szs_decode(const uint8_t *src, uint8_t *dst, size_t src_length,
                           size_t *dst_length,
                           const struct nsmbw_compress_parameters *params);
 
+enum nsmbw_compress_cx_type {
+  CX_COMPRESSION_TYPE_LEMPEL_ZIV = 0x10,
+  CX_COMPRESSION_TYPE_HUFFMAN = 0x20,
+  CX_COMPRESSION_TYPE_RUN_LENGTH = 0x30,
+  CX_COMPRESSION_TYPE_LH = 0x40,
+  CX_COMPRESSION_TYPE_LRC = 0x50,
+  CX_COMPRESSION_TYPE_FILTER_DIFF = 0x80,
+
+  CX_COMPRESSION_TYPE_MASK = 0xf0
+};
+
 #if defined(__cplusplus)
 }
 #endif

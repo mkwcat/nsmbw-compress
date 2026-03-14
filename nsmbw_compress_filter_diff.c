@@ -1,4 +1,3 @@
-#include "cx.h"
 #include "nsmbw_compress.h"
 #include "nsmbw_compress_internal.h"
 #include <assert.h>
@@ -11,7 +10,18 @@ bool nsmbw_compress_filter_diff_decode(
     const struct nsmbw_compress_parameters *params) {
   (void)params;
 
+  if (src_length < sizeof(uint32_t)) {
+    nsmbw_compress_print_error(
+        "Input file is too small to be a valid compressed filter-diff file");
+    return false;
+  }
+
   const uint32_t header = ncutil_read_le_u32(src, 0);
+  const enum nsmbw_compress_cx_type type = header & CX_COMPRESSION_TYPE_MASK;
+  if (type != CX_COMPRESSION_TYPE_FILTER_DIFF) {
+    nsmbw_compress_print_error("Input data is not a CX-Filter-Diff file");
+    return false;
+  }
   const uint8_t option = header & 0x0F;
   const uint32_t size = header >> 8;
 

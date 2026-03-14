@@ -1,4 +1,3 @@
-#include "cx.h"
 #include "nsmbw_compress.h"
 #include "nsmbw_compress_huff.h"
 #include "nsmbw_compress_internal.h"
@@ -107,6 +106,17 @@ bool nsmbw_compress_lh_decode(const uint8_t *src, uint8_t *dst,
   }
 
   const uint32_t header = ncutil_read_le_u32(src, 0);
+  const enum nsmbw_compress_cx_type type = header & CX_COMPRESSION_TYPE_MASK;
+  if (type != CX_COMPRESSION_TYPE_LH) {
+    nsmbw_compress_print_error("Input data is not a CX-LH file");
+    return false;
+  }
+  const uint8_t option = header & 0xF;
+  if (option != 0) {
+    nsmbw_compress_print_error(
+        "Unknown LH option in input data: %d (expected 0)", option);
+    return false;
+  }
   uint32_t read_size = header >> 8;
 
   src += sizeof(uint32_t);
@@ -120,6 +130,13 @@ bool nsmbw_compress_lh_decode(const uint8_t *src, uint8_t *dst,
     read_size = ncutil_read_le_u32(src, 0);
 
     src += sizeof(uint32_t);
+  }
+
+  assert(read_size <= *dst_length);
+  if (read_size > *dst_length) {
+    nsmbw_compress_print_error(
+        "Output buffer is too small for decompressed data in LH file");
+    return false;
   }
 
   const uint32_t size = read_size;

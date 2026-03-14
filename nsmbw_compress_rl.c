@@ -1,4 +1,3 @@
-#include "cx.h"
 #include "nsmbw_compress.h"
 #include "nsmbw_compress_internal.h"
 #include <assert.h>
@@ -21,14 +20,19 @@ bool nsmbw_compress_rl_decode(const uint8_t *src, uint8_t *dst,
   }
 
   const uint32_t header = ncutil_read_le_u32(src, 0);
+  const enum nsmbw_compress_cx_type type = header & CX_COMPRESSION_TYPE_MASK;
+  if (type != CX_COMPRESSION_TYPE_RUN_LENGTH) {
+    nsmbw_compress_print_error("Input data is not a CX-RL file");
+    return false;
+  }
   const uint8_t option = header & 0xF;
-  uint32_t read_size = header >> 8;
-
   if (option != 0) {
     nsmbw_compress_print_error(
         "Unknown run-length option in input data: %d (expected 0)", option);
     return false;
   }
+
+  uint32_t read_size = header >> 8;
 
   src += sizeof(uint32_t);
 
