@@ -1,6 +1,7 @@
 #include "cx.h"
 #include "nsmbw_compress.h"
 #include "nsmbw_compress_internal.h"
+#include <assert.h>
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,20 +11,59 @@ bool nsmbw_compress_filter_diff_decode(
     const struct nsmbw_compress_parameters *params) {
   (void)params;
 
-  CXSecureResult result = CXSecureUnfilterDiff(src, src_length, dst);
-  if (result != CX_SECURE_ERR_OK) {
-    nsmbw_compress_print_cx_error(true, result);
+  const uint32_t header = ncutil_read_le_u32(src, 0);
+  const uint8_t option = header & 0x0F;
+  const uint32_t size = header >> 8;
+
+  assert(*dst_length >= size);
+  if (option != 0 && option != 1) {
+    nsmbw_compress_print_error(
+        "Input data has unrecognized filter-diff compression option: %d",
+        option);
     return false;
   }
+
+  if (size == 0) {
+    return true;
+  }
+  const size_t expected_length =
+      ncutil_align_up(option ? 2 : 1, size + sizeof(uint32_t));
+  if (src_length < expected_length) {
+    nsmbw_compress_print_error(
+        "Input data is too small to be a valid compressed filter-diff file");
+    return false;
+  }
+
+  src += sizeof(uint32_t);
+
+  if (option == 0) {
+    uint8_t sum = 0;
+    for (uint32_t i = 0; i < size; i++) {
+      sum += src[i];
+      dst[i] = sum;
+    }
+  } else {
+    uint16_t sum = 0;
+    for (uint32_t i = 0; i < size; i += sizeof(uint16_t)) {
+      sum += ncutil_read_le_u16(src, i);
+      ncutil_write_le_u16(dst, i, sum);
+    }
+  }
+
+  if (src_length > ncutil_align_up(0x20, expected_length)) {
+    nsmbw_compress_print_warning(
+        "Ignored trailing %zu bytes in file after compressed data",
+        src_length - expected_length);
+  }
+
+  *dst_length = size;
   return true;
 }
 
 bool nsmbw_compress_filter_diff_encode(
     const uint8_t *src, uint8_t *dst, size_t src_length, size_t *dst_length,
     const struct nsmbw_compress_parameters *params) {
-  (void)params;
-
-  // Filter-diff doesn't support extended CX file sizes
+  // Filter-diff doesn't support extended CX file sizes for some reason
   if (src_length >= (1 << 24)) {
     nsmbw_compress_print_error(
         "Input size too large for filter-diff compression (max: 2^24-1 bytes)");
