@@ -62,6 +62,8 @@ static void run_compression_tests() {
       exit(EXIT_FAILURE);
     }
 
+    printf("  Compressed size: %zu bytes\n", compressed_size);
+
     memset(decompressed_data, (*(uint8_t *)generated_uncompressed_data) ^ 0xFF,
            BUFFER_SIZE);
 
