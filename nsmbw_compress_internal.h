@@ -155,6 +155,22 @@ static inline void ncutil_bit_writer_pad(struct ncutil_bit_writer *writer,
   }
 }
 
+struct ncutil_bit_reader {
+  const uint8_t *data;
+  const uint8_t *data_end;
+  uint8_t bit;
+};
+
+static inline int ncutil_bit_reader_read_bit(struct ncutil_bit_reader *reader) {
+  if (reader->bit == 8) {
+    if (++reader->data >= reader->data_end) {
+      return -1;
+    }
+    reader->bit = 0;
+  }
+  return (*reader->data >> (7 - reader->bit++)) & 1;
+}
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

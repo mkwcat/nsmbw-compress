@@ -197,6 +197,13 @@ bool nsmbw_compress_huff_decode(
   }
 
   assert(dst == dst_end);
+
+  if (ncutil_align_up_ptr(0x20, src) < (const void *)src_end) {
+    nsmbw_compress_print_warning(
+        "Ignored trailing %zu bytes in file after compressed data",
+        (size_t)(src_end - src));
+  }
+
   *dst_length = size;
   return true;
 }

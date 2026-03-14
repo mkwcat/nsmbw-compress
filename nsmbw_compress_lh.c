@@ -3,38 +3,239 @@
 #include "nsmbw_compress_huff.h"
 #include "nsmbw_compress_internal.h"
 #include "nsmbw_compress_lz.h"
+#include <assert.h>
 #include <errno.h>
 #include <limits.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 
+enum {
+  lh_sym_huff_bit_size = 9,
+  lh_dst_huff_bit_size = 5,
+};
+
+static uint32_t lh_import_huff_tree(uint16_t *tree, const uint8_t *src,
+                                    uint8_t huff_bit_size,
+                                    uint32_t input_size) {
+  uint32_t table_size = *src++;
+  if (huff_bit_size > 8) {
+    table_size |= *src++ << 8;
+  }
+  table_size = (table_size + 1) << 2;
+
+  if (table_size > input_size) {
+    return table_size;
+  }
+
+  const uint8_t *const src_end = src + table_size;
+  const uint32_t max_table_size = (1 << huff_bit_size) << 1;
+  const uint16_t huff_bit_mask = (1 << huff_bit_size) - 1;
+
+  uint8_t bit_count = 0;
+  uint16_t value = 0;
+  uint16_t it = 1;
+  while (src < src_end) {
+    while (bit_count < huff_bit_size) {
+      value <<= 8;
+      value |= *src++;
+      bit_count += 8;
+    }
+
+    if (it < max_table_size) {
+      tree[it++] = huff_bit_mask & (value >> (bit_count - huff_bit_size));
+    }
+
+    bit_count -= huff_bit_size;
+  }
+  tree[0] = it - 1;
+
+  return table_size;
+}
+
+static inline int lh_read_next_huff_value(struct ncutil_bit_reader *bitReader,
+                                          uint16_t *tree,
+                                          uint8_t huff_bit_size) {
+  const uint16_t *const tree_end = tree + *tree + 1;
+  tree += 1;
+  const int huff_bit_top = (1 << huff_bit_size) >> 1;
+  const int huff_bit_mask = ((1 << huff_bit_size) >> 2) - 1;
+
+  do {
+    int bit = ncutil_bit_reader_read_bit(bitReader);
+    int index = (((*tree & huff_bit_mask) + 1) << 1) + bit;
+
+    if (bit < 0) {
+      nsmbw_compress_print_error(
+          "Reached unexpected end of file while decompressing LH input data");
+      return -1;
+    }
+
+    if (*tree & (huff_bit_top >> bit)) {
+      tree = (uint16_t *)ncutil_align_down_ptr(4, tree);
+      if (tree + index >= tree_end) {
+        nsmbw_compress_print_error("LH Huffman tree index out of bounds");
+        return -1;
+      }
+      return tree[index];
+    } else {
+      tree = (uint16_t *)ncutil_align_down_ptr(4, tree);
+      tree += index;
+    }
+  } while (tree < tree_end);
+
+  nsmbw_compress_print_error(
+      "LH Huffman tree traversal overflowed the end of the tree");
+  return -1;
+}
+
 bool nsmbw_compress_lh_decode(const uint8_t *src, uint8_t *dst,
                               size_t src_length, size_t *dst_length,
                               const struct nsmbw_compress_parameters *params) {
   (void)params;
 
-  void *work_buffer = malloc(CX_SECURE_UNCOMPRESS_LH_WORK_SIZE);
-  if (work_buffer == NULL) {
+  const uint8_t *const src_end = src + src_length;
+  const uint8_t *const dst_start = dst;
+
+  uint16_t sym_tree[1 << (lh_sym_huff_bit_size + 2)];
+  uint16_t dst_tree[1 << (lh_dst_huff_bit_size + 2)];
+
+  if (src + sizeof(uint32_t) + sizeof(uint16_t) > src_end) {
     nsmbw_compress_print_error(
-        "Failed to allocate memory for LH decompression work buffer: %s",
-        strerror(errno));
+        "Input file is too small to be a valid compressed LH file");
     return false;
   }
 
-  CXSecureResult result =
-      CXSecureUncompressLH(src, src_length, dst, work_buffer);
+  const uint32_t header = ncutil_read_le_u32(src, 0);
+  uint32_t read_size = header >> 8;
 
-  free(work_buffer);
+  src += sizeof(uint32_t);
 
-  if (result != CX_SECURE_ERR_OK) {
-    nsmbw_compress_print_cx_error(true, result);
+  if (read_size == 0) {
+    if (src + sizeof(uint32_t) + sizeof(uint16_t) > src_end) {
+      nsmbw_compress_print_error(
+          "Input file is too small to be a valid compressed LH file");
+      return false;
+    }
+    read_size = ncutil_read_le_u32(src, 4);
+
+    src += sizeof(uint32_t);
+  }
+
+  const uint32_t size = read_size;
+  const uint8_t *const dst_end = dst + size;
+
+  src +=
+      lh_import_huff_tree(sym_tree, src, lh_sym_huff_bit_size, src_end - src);
+  if (src >= src_end) {
+    nsmbw_compress_print_error(
+        "Input file is too small to be a valid compressed LH file");
     return false;
   }
+
+  if (!nsmbw_compress_huff_verify_table(sym_tree, lh_sym_huff_bit_size,
+                                        lh_sym_huff_bit_size)) {
+    nsmbw_compress_print_error("Invalid Huffman table 1 in LH compressed file");
+    return false;
+  }
+
+  src +=
+      lh_import_huff_tree(dst_tree, src, lh_dst_huff_bit_size, src_end - src);
+
+  if (src > src_end) {
+    nsmbw_compress_print_error(
+        "Input file is too small to be a valid compressed LH file");
+    return false;
+  }
+
+  if (!nsmbw_compress_huff_verify_table(dst_tree, lh_dst_huff_bit_size,
+                                        lh_dst_huff_bit_size)) {
+    nsmbw_compress_print_error("Invalid Huffman table 2 in LH compressed file");
+    return false;
+  }
+
+  struct ncutil_bit_reader bit_reader = {src, src_end};
+
+  while (dst < dst_end) {
+    int ret =
+        lh_read_next_huff_value(&bit_reader, sym_tree, lh_sym_huff_bit_size);
+    if (ret < 0) {
+      return false;
+    }
+
+    if (ret < 0x100) {
+      // LZ flag not set; just a byte
+      *dst++ = ret;
+      continue;
+    }
+
+    uint16_t ref_size = (ret & 0xFF) + 3;
+
+    ret = lh_read_next_huff_value(&bit_reader, dst_tree, lh_dst_huff_bit_size);
+    if (ret < 0) {
+      return false;
+    }
+    uint16_t ref_offset_bits = ret;
+    uint16_t ref_offset = 0;
+    const uint16_t ref_offset_bits_save = ref_offset_bits;
+
+    if (ref_offset_bits) {
+      ref_offset = 1;
+
+      while (--ref_offset_bits) {
+        if (ref_offset & 0x8000) {
+          nsmbw_compress_print_error(
+              "LH data contains reference offset larger than 16 bits");
+          return false;
+        }
+        ref_offset <<= 1;
+        ref_offset |= ncutil_bit_reader_read_bit(&bit_reader);
+      }
+    }
+
+    if (ref_offset == 0xFFFF) {
+      nsmbw_compress_print_error(
+          "LH data contains reference offset larger than 16 bits");
+      return false;
+    }
+
+    if (dst - dst_start < ++ref_offset) {
+      nsmbw_compress_print_error(
+          "Out of bounds reference in LH compressed file (offset %u at output "
+          "position %zu)",
+          ref_offset, (size_t)(dst - dst_start));
+      return false;
+    }
+
+    if (dst + ref_size > dst_end) {
+      nsmbw_compress_print_error(
+          "Reference overflows output size in LH compressed file (offset %u, "
+          "size %u at output position %zu with output size %zu)",
+          ref_offset, ref_size, (size_t)(dst - dst_start), size);
+      return false;
+    }
+
+    while (ref_size--) {
+      *dst = dst[0 - ref_offset];
+      dst++;
+    }
+  }
+
+  assert(dst == dst_end);
+
+  if (ncutil_align_up_ptr(0x20, bit_reader.data) < (const void *)src_end) {
+    nsmbw_compress_print_warning(
+        "Ignored trailing %zu bytes in file after compressed data",
+        (size_t)(src_end - bit_reader.data));
+  }
+
+  *dst_length = size;
   return true;
 }
 
-static const uint32_t lh_encode_lz_window_size = 0x10000u;
+// Cannot support more than 0xFFFF due to the reference offset being stored in a
+// u16 in the official LH decoder
+static const uint32_t lh_encode_lz_window_size = 0xFFFFu;
 
 static size_t lz_encode(const uint8_t *restrict src, uint8_t *restrict dst,
                         size_t src_length, size_t dst_length,
@@ -137,10 +338,10 @@ bool nsmbw_compress_lh_encode(const uint8_t *src, uint8_t *dst,
   const size_t lz_work_size = ncutil_align_up(
       sizeof(size_t),
       nsmbw_compress_lz_get_work_size(lh_encode_lz_window_size, true));
-  const size_t huff_sym_table_size =
-      ncutil_align_up(sizeof(size_t), nsmbw_compress_huff_get_work_size(9));
-  const size_t huff_dst_table_size =
-      ncutil_align_up(sizeof(size_t), nsmbw_compress_huff_get_work_size(5));
+  const size_t huff_sym_table_size = ncutil_align_up(
+      sizeof(size_t), nsmbw_compress_huff_get_work_size(lh_sym_huff_bit_size));
+  const size_t huff_dst_table_size = ncutil_align_up(
+      sizeof(size_t), nsmbw_compress_huff_get_work_size(lh_dst_huff_bit_size));
   const size_t tmp_lz_buffer_size = 0x1000 + src_length * 4;
 
   const size_t total_work_size = lz_work_size + huff_sym_table_size +
@@ -160,9 +361,11 @@ bool nsmbw_compress_lh_encode(const uint8_t *src, uint8_t *dst,
   uint8_t *const lz_data = huff_dst_table_buffer + huff_dst_table_size;
 
   struct nsmbw_compress_huff_table sym_table;
-  nsmbw_compress_huff_init_table(&sym_table, huff_sym_table_buffer, 9);
+  nsmbw_compress_huff_init_table(&sym_table, huff_sym_table_buffer,
+                                 lh_sym_huff_bit_size);
   struct nsmbw_compress_huff_table dst_table;
-  nsmbw_compress_huff_init_table(&dst_table, huff_dst_table_buffer, 5);
+  nsmbw_compress_huff_init_table(&dst_table, huff_dst_table_buffer,
+                                 lh_dst_huff_bit_size);
 
   size_t lz_length = lz_encode(src, lz_data, src_length, tmp_lz_buffer_size,
                                &sym_table, &dst_table, lz_work_buffer);
@@ -172,12 +375,14 @@ bool nsmbw_compress_lh_encode(const uint8_t *src, uint8_t *dst,
   }
 
   nsmbw_compress_huff_size_t construct_count =
-      nsmbw_compress_huff_construct_tree(sym_table.nodes,
-                                         nsmbw_compress_huff_sym_size(9));
-  nsmbw_compress_huff_make_huff_tree(&sym_table, construct_count, 9);
+      nsmbw_compress_huff_construct_tree(
+          sym_table.nodes, nsmbw_compress_huff_sym_size(lh_sym_huff_bit_size));
+  nsmbw_compress_huff_make_huff_tree(&sym_table, construct_count,
+                                     lh_sym_huff_bit_size);
   construct_count = nsmbw_compress_huff_construct_tree(
-      dst_table.nodes, nsmbw_compress_huff_sym_size(5));
-  nsmbw_compress_huff_make_huff_tree(&dst_table, construct_count, 5);
+      dst_table.nodes, nsmbw_compress_huff_sym_size(lh_dst_huff_bit_size));
+  nsmbw_compress_huff_make_huff_tree(&dst_table, construct_count,
+                                     lh_dst_huff_bit_size);
 
   struct ncutil_bit_writer bit_writer = {
       .data = dst,
@@ -186,7 +391,7 @@ bool nsmbw_compress_lh_encode(const uint8_t *src, uint8_t *dst,
   // Write Huffman tables
   struct nsmbw_compress_huff_table *table = &sym_table;
   for (int t = 0; t < 2; t++, table = &dst_table) {
-    const int bit_size = t ? 5 : 9;
+    const int bit_size = t ? lh_dst_huff_bit_size : lh_sym_huff_bit_size;
     struct ncutil_bit_writer header_writer = bit_writer;
     if (bit_size > 8) {
       ncutil_bit_writer_write(&bit_writer, 0, 16);
