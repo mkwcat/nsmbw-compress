@@ -1,6 +1,6 @@
-#include "nsmbw_compress_huff.h"
+#include "huff.h"
+#include "ncutil.h"
 #include "nsmbw_compress.h"
-#include "nsmbw_compress_internal.h"
 #include <assert.h>
 #include <errno.h>
 #include <stdint.h>
@@ -22,7 +22,7 @@ bool nsmbw_compress_huff_verify_table(const uint16_t *table,
   const uint16_t *const start = table + 1;
   const uint16_t *const end = table + table_size;
 
-  uint8_t e[sizeof(uint8_t) * 0x40] = {};
+  uint8_t e[sizeof(uint16_t) * 0x40] = {};
 
   const uint16_t left_leaf_flag = 1 << (flags_bit_offset - 1);
   const uint16_t right_leaf_flag = 1 << (flags_bit_offset - 2);
@@ -95,8 +95,8 @@ bool nsmbw_compress_huff_decode(
   }
 
   const uint32_t header = ncutil_read_le_u32(src, 0);
-  const enum nsmbw_compress_cx_type type = header & CX_COMPRESSION_TYPE_MASK;
-  if (type != CX_COMPRESSION_TYPE_HUFFMAN) {
+  const enum nsmbw_compress_cx_type type = header & nsmbw_compress_cx_type_mask;
+  if (type != nsmbw_compress_cx_type_huff) {
     nsmbw_compress_print_error("Input data is not a CX-Huffman file");
     return false;
   }
@@ -180,7 +180,7 @@ bool nsmbw_compress_huff_decode(
         continue;
       }
       decoded >>= huff_bit_size;
-      decoded |= *table_cur << (32 - huff_bit_size);
+      decoded |= (uint32_t)*table_cur << (32 - huff_bit_size);
       table_cur = table;
       word_it++;
 
@@ -654,6 +654,9 @@ uint32_t nsmbw_compress_huff_convert_data(
   }
 
   while (length % 4 != 0) {
+    if (length + 1 >= max_length) {
+      return 0;
+    }
     dst[length++] = 0;
   }
 
@@ -693,10 +696,10 @@ bool nsmbw_compress_huff_encode(
   uint32_t length = 0;
   if (src_length < 0x1000000) {
     ncutil_write_le_u32(
-        dst, 0, src_length << 8 | CX_COMPRESSION_TYPE_HUFFMAN | huff_bit_size);
+        dst, 0, src_length << 8 | nsmbw_compress_cx_type_huff | huff_bit_size);
     length += sizeof(uint32_t);
   } else {
-    ncutil_write_le_u32(dst, 0, CX_COMPRESSION_TYPE_HUFFMAN | huff_bit_size);
+    ncutil_write_le_u32(dst, 0, nsmbw_compress_cx_type_huff | huff_bit_size);
     ncutil_write_le_u32(dst, sizeof(uint32_t), src_length);
     length += sizeof(uint32_t) + sizeof(uint32_t);
   }

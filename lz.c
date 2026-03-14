@@ -1,6 +1,6 @@
-#include "nsmbw_compress_lz.h"
+#include "lz.h"
+#include "ncutil.h"
 #include "nsmbw_compress.h"
-#include "nsmbw_compress_internal.h"
 #include <assert.h>
 #include <errno.h>
 #include <limits.h>
@@ -20,8 +20,8 @@ bool nsmbw_compress_lz_decode(const uint8_t *src, uint8_t *dst,
   }
 
   const uint32_t header = ncutil_read_le_u32(src, 0);
-  const enum nsmbw_compress_cx_type type = header & CX_COMPRESSION_TYPE_MASK;
-  if (type != CX_COMPRESSION_TYPE_LEMPEL_ZIV) {
+  const enum nsmbw_compress_cx_type type = header & nsmbw_compress_cx_type_mask;
+  if (type != nsmbw_compress_cx_type_lz) {
     nsmbw_compress_print_error("Input data is not a CX-LZ file");
     return false;
   }
@@ -337,12 +337,12 @@ bool nsmbw_compress_lz_encode(
 
   if (src_length < 0x1000000) {
     ncutil_write_le_u32(dst, 0,
-                        src_length << 8 | CX_COMPRESSION_TYPE_LEMPEL_ZIV |
+                        src_length << 8 | nsmbw_compress_cx_type_lz |
                             params->lz_extended);
     dst += sizeof(uint32_t);
   } else {
     ncutil_write_le_u32(dst, 0,
-                        CX_COMPRESSION_TYPE_LEMPEL_ZIV | params->lz_extended);
+                        nsmbw_compress_cx_type_lz | params->lz_extended);
     ncutil_write_le_u32(dst, sizeof(uint32_t), src_length);
     dst += sizeof(uint32_t) + sizeof(uint32_t);
   }
@@ -424,7 +424,12 @@ bool nsmbw_compress_lz_encode(
   }
 
   // Pad to 4 bytes
-  for (int i = 0; (dst - dst_start + i) % 4 != 0; i++) {
+  while ((dst - dst_start) % 4 != 0) {
+    if (dst + 1 > dst_end) {
+      nsmbw_compress_print_error("Output file is too much larger than the "
+                                 "input file; aborting compression");
+      return false;
+    }
     *dst++ = 0;
   }
 

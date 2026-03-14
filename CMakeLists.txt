@@ -4,26 +4,12 @@ project(nsmbw-compress C)
 
 add_executable(nsmbw-compress
   nsmbw_compress.c
-  nsmbw_compress_lz.c
-  nsmbw_compress_huff.c
-  nsmbw_compress_rl.c
-  nsmbw_compress_lh.c
-  nsmbw_compress_lrc.c
-  nsmbw_compress_filter_diff.c
-  nsmbw_compress_szs.c
-  nsmbw_compress_test.c
-)
-
-target_compile_options(nsmbw-compress PRIVATE
-  -g
-  -Og
-  $<$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>,$<CXX_COMPILER_ID:GNU>>:-ffunction-sections -fdata-sections>
-  $<$<CXX_COMPILER_ID:MSVC>:/Gy>
-)
-
-target_link_options(nsmbw-compress PRIVATE
-  $<$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>,$<CXX_COMPILER_ID:GNU>>:-Wl,-dead_strip> # Apple
-  $<$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>,$<CXX_COMPILER_ID:GNU>>:-Wl,--gc-sections> # Clang/GCC
-  $<$<CXX_COMPILER_ID:MSVC>:/OPT:REF>
-  -g
+  lz.c
+  huff.c
+  rl.c
+  lh.c
+  lrc.c
+  filter_diff.c
+  szs.c
+  test.c
 )

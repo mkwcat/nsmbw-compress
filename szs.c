@@ -1,5 +1,5 @@
 #include "nsmbw_compress.h"
-#include "nsmbw_compress_internal.h"
+#include "ncutil.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>

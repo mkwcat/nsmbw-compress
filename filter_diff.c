@@ -1,5 +1,5 @@
+#include "ncutil.h"
 #include "nsmbw_compress.h"
-#include "nsmbw_compress_internal.h"
 #include <assert.h>
 #include <errno.h>
 #include <stdlib.h>
@@ -17,8 +17,8 @@ bool nsmbw_compress_filter_diff_decode(
   }
 
   const uint32_t header = ncutil_read_le_u32(src, 0);
-  const enum nsmbw_compress_cx_type type = header & CX_COMPRESSION_TYPE_MASK;
-  if (type != CX_COMPRESSION_TYPE_FILTER_DIFF) {
+  const enum nsmbw_compress_cx_type type = header & nsmbw_compress_cx_type_mask;
+  if (type != nsmbw_compress_cx_type_filter_diff) {
     nsmbw_compress_print_error("Input data is not a CX-Filter-Diff file");
     return false;
   }
@@ -54,9 +54,13 @@ bool nsmbw_compress_filter_diff_decode(
     }
   } else {
     uint16_t sum = 0;
-    for (uint32_t i = 0; i < size; i += sizeof(uint16_t)) {
+    for (uint32_t i = 0; i < size - 1; i += sizeof(uint16_t)) {
       sum += ncutil_read_le_u16(src, i);
       ncutil_write_le_u16(dst, i, sum);
+    }
+    if (size % 2 != 0) {
+      sum += ncutil_read_le_u16(src, size - 1);
+      dst[size - 1] = (uint8_t)sum;
     }
   }
 
@@ -80,7 +84,7 @@ bool nsmbw_compress_filter_diff_encode(
     return false;
   }
 
-  uint32_t init_value = CX_COMPRESSION_TYPE_FILTER_DIFF |
+  uint32_t init_value = nsmbw_compress_cx_type_filter_diff |
                         (params->filter_diff_size == 8 ? 0x0 : 0x1) |
                         (src_length << 8);
   ncutil_write_le_u32(dst, 0, init_value);

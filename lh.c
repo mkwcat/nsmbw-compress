@@ -1,7 +1,7 @@
+#include "huff.h"
+#include "lz.h"
+#include "ncutil.h"
 #include "nsmbw_compress.h"
-#include "nsmbw_compress_huff.h"
-#include "nsmbw_compress_internal.h"
-#include "nsmbw_compress_lz.h"
 #include <assert.h>
 #include <errno.h>
 #include <limits.h>
@@ -106,8 +106,8 @@ bool nsmbw_compress_lh_decode(const uint8_t *src, uint8_t *dst,
   }
 
   const uint32_t header = ncutil_read_le_u32(src, 0);
-  const enum nsmbw_compress_cx_type type = header & CX_COMPRESSION_TYPE_MASK;
-  if (type != CX_COMPRESSION_TYPE_LH) {
+  const enum nsmbw_compress_cx_type type = header & nsmbw_compress_cx_type_mask;
+  if (type != nsmbw_compress_cx_type_lh) {
     nsmbw_compress_print_error("Input data is not a CX-LH file");
     return false;
   }
@@ -333,7 +333,12 @@ static size_t lz_encode(const uint8_t *restrict src, uint8_t *restrict dst,
   }
 
   // Pad to 4 bytes
-  for (int i = 0; (dst - dst_start + i) % 4 != 0; i++) {
+  while ((dst - dst_start) % 4 != 0) {
+    if (dst + 1 > dst_end) {
+      nsmbw_compress_print_error("Output file is too much larger than the "
+                                 "input file; aborting compression");
+      return 0;
+    }
     *dst++ = 0;
   }
 
@@ -344,10 +349,10 @@ bool nsmbw_compress_lh_encode(const uint8_t *src, uint8_t *dst,
                               size_t src_length, size_t *dst_length,
                               const struct nsmbw_compress_parameters *params) {
   if (src_length < 0x1000000) {
-    ncutil_write_le_u32(dst, 0, src_length << 8 | CX_COMPRESSION_TYPE_LH);
+    ncutil_write_le_u32(dst, 0, src_length << 8 | nsmbw_compress_cx_type_lh);
     dst += sizeof(uint32_t);
   } else {
-    ncutil_write_le_u32(dst, 0, CX_COMPRESSION_TYPE_LH);
+    ncutil_write_le_u32(dst, 0, nsmbw_compress_cx_type_lh);
     ncutil_write_le_u32(dst, sizeof(uint32_t), src_length);
     dst += sizeof(uint32_t) + sizeof(uint32_t);
   }

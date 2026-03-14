@@ -1,5 +1,5 @@
 #include "nsmbw_compress.h"
-#include "nsmbw_compress_internal.h"
+#include "ncutil.h"
 #include <assert.h>
 #include <errno.h>
 #include <stdarg.h>
@@ -259,11 +259,6 @@ void nsmbw_compress_print_verbose(const char *message, ...) {
   va_end(args);
 }
 
-void nsmbw_compress_print_cx_error(bool decompression, int result) {
-  nsmbw_compress_print_error(
-      "%s error: %d", decompression ? "Decompression" : "Compression", result);
-}
-
 static int exit_print_help() {
   puts("Usage: nsmbw-compress [options] <input> [-o output]");
   puts("Options:");
@@ -429,10 +424,10 @@ static bool get_uncompress_info(const void *input_data, size_t input_size,
     return true;
   }
 
-  enum nsmbw_compress_cx_type cx_type = header & CX_COMPRESSION_TYPE_MASK;
+  enum nsmbw_compress_cx_type cx_type = header & nsmbw_compress_cx_type_mask;
   uint8_t cx_stat = header & 0x0F;
   switch (cx_type) {
-  case CX_COMPRESSION_TYPE_LEMPEL_ZIV:
+  case nsmbw_compress_cx_type_lz:
     *compression_type = nsmbw_compress_type_lz;
     if (cx_stat != 0 && cx_stat != 1) {
       nsmbw_compress_print_error(
@@ -440,7 +435,7 @@ static bool get_uncompress_info(const void *input_data, size_t input_size,
       return false;
     }
     break;
-  case CX_COMPRESSION_TYPE_HUFFMAN:
+  case nsmbw_compress_cx_type_huff:
     *compression_type = nsmbw_compress_type_huff;
     if (cx_stat != 4 && cx_stat != 8) {
       nsmbw_compress_print_error(
@@ -448,7 +443,7 @@ static bool get_uncompress_info(const void *input_data, size_t input_size,
       return false;
     }
     break;
-  case CX_COMPRESSION_TYPE_RUN_LENGTH:
+  case nsmbw_compress_cx_type_rl:
     *compression_type = nsmbw_compress_type_rl;
     if (cx_stat != 0) {
       nsmbw_compress_print_warning(
@@ -456,7 +451,7 @@ static bool get_uncompress_info(const void *input_data, size_t input_size,
           cx_stat);
     }
     break;
-  case CX_COMPRESSION_TYPE_LH:
+  case nsmbw_compress_cx_type_lh:
     *compression_type = nsmbw_compress_type_lh;
     if (cx_stat != 0) {
       nsmbw_compress_print_warning(
@@ -464,7 +459,7 @@ static bool get_uncompress_info(const void *input_data, size_t input_size,
           cx_stat);
     }
     break;
-  case CX_COMPRESSION_TYPE_LRC:
+  case nsmbw_compress_cx_type_lrc:
     *compression_type = nsmbw_compress_type_lrc;
     if (cx_stat != 0) {
       nsmbw_compress_print_warning(
@@ -472,7 +467,7 @@ static bool get_uncompress_info(const void *input_data, size_t input_size,
           cx_stat);
     }
     break;
-  case CX_COMPRESSION_TYPE_FILTER_DIFF:
+  case nsmbw_compress_cx_type_filter_diff:
     *compression_type = nsmbw_compress_type_filter_diff;
     if (cx_stat != 0 && cx_stat != 1) {
       nsmbw_compress_print_warning("Input file has unrecognized filter-diff "
@@ -488,7 +483,7 @@ static bool get_uncompress_info(const void *input_data, size_t input_size,
 
   *expanded_size = header >> 8;
   if (*expanded_size == 0) {
-    if (cx_type == CX_COMPRESSION_TYPE_FILTER_DIFF) {
+    if (cx_type == nsmbw_compress_cx_type_filter_diff) {
       nsmbw_compress_print_error(
           "Invalid zero size in filter-diff input file header");
       return false;

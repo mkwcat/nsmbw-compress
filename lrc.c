@@ -1,9 +1,8 @@
+#include "ncutil.h"
 #include "nsmbw_compress.h"
-#include "nsmbw_compress_internal.h"
 #include <assert.h>
 #include <errno.h>
 #include <stdint.h>
-#include <stdlib.h>
 #include <string.h>
 
 struct range_coder_info {
@@ -14,11 +13,10 @@ struct range_coder_info {
 };
 
 struct range_coder_state {
-  int32_t at_0x00;
+  uint32_t at_0x00;
   uint32_t at_0x04;
-  int32_t at_0x08;
+  uint32_t at_0x08;
   uint8_t at_0x0c;
-  int32_t at_0x10;
 };
 
 static size_t range_coder_info_get_work_size(uint8_t rc_bit_size) {
@@ -47,7 +45,6 @@ static void range_coder_state_init(struct range_coder_state *rc_state) {
   rc_state->at_0x04 = 0x80000000;
   rc_state->at_0x08 = 0;
   rc_state->at_0x0c = 0;
-  rc_state->at_0x10 = 0;
 }
 
 static void range_coder_add_count(struct range_coder_info *rc_info,
@@ -83,17 +80,17 @@ static void range_coder_add_count(struct range_coder_info *rc_info,
 }
 
 static uint16_t range_coder_search(struct range_coder_info *rc_info,
-                                   int32_t rc_state_0x08,
+                                   uint32_t rc_state_0x08,
                                    uint32_t rc_state_0x04,
-                                   int32_t rc_state_0x00) {
-  int32_t rc_sym_size = 1 << rc_info->rc_bit_size;
-  int32_t b = rc_state_0x08 - rc_state_0x00;
+                                   uint32_t rc_state_0x00) {
+  uint32_t rc_sym_size = 1 << rc_info->rc_bit_size;
+  uint32_t b = rc_state_0x08 - rc_state_0x00;
   uint32_t c = rc_state_0x04 / rc_info->sym_size;
   uint32_t d = b / c;
   uint32_t e = 0;
-  int32_t rc_sym_mask = rc_sym_size - 1;
+  uint32_t rc_sym_mask = rc_sym_size - 1;
 
-  int32_t g;
+  uint32_t g;
   while (e < rc_sym_mask) {
     g = (e + rc_sym_mask) >> 1;
 
@@ -115,12 +112,12 @@ static uint16_t range_coder_search(struct range_coder_info *rc_info,
 static int range_coder_get_data(const uint8_t *stream,
                                 struct range_coder_info *rc_info,
                                 struct range_coder_state *rc_state,
-                                int32_t *src_length) {
+                                uint32_t *src_length) {
   uint16_t count = range_coder_search(rc_info, rc_state->at_0x08,
                                       rc_state->at_0x04, rc_state->at_0x00);
-  int32_t rc_src_size = 0;
+  uint32_t rc_src_size = 0;
 
-  int32_t c = rc_state->at_0x04 / rc_info->sym_size;
+  uint32_t c = rc_state->at_0x04 / rc_info->sym_size;
 
   rc_state->at_0x00 += c * rc_info->at_0x04[count];
   rc_state->at_0x04 = c * rc_info->at_0x00[count];
@@ -160,8 +157,8 @@ bool nsmbw_compress_lrc_decode(const uint8_t *src, uint8_t *dst,
   }
 
   const uint32_t header = ncutil_read_le_u32(src, 0);
-  const enum nsmbw_compress_cx_type type = header & CX_COMPRESSION_TYPE_MASK;
-  if (type != CX_COMPRESSION_TYPE_LEMPEL_ZIV) {
+  const enum nsmbw_compress_cx_type type = header & nsmbw_compress_cx_type_mask;
+  if (type != nsmbw_compress_cx_type_lrc) {
     nsmbw_compress_print_error("Input data is not a CX-LRC file");
     return false;
   }
@@ -199,22 +196,16 @@ bool nsmbw_compress_lrc_decode(const uint8_t *src, uint8_t *dst,
 
   unsigned dst_pos = 0;
 
-  uint32_t *work_buffer = (uint32_t *)malloc(
-      range_coder_info_get_work_size(9) + range_coder_info_get_work_size(12));
-  if (work_buffer == NULL) {
-    nsmbw_compress_print_error(
-        "Failed to allocate memory for LRC decompression work buffer: %s",
-        strerror(errno));
-    return false;
-  }
+  uint32_t work_buffer_sym[(1 << 9) * sizeof(uint32_t) * 2];
+  uint32_t work_buffer_dst[(1 << 12) * sizeof(uint32_t) * 2];
+  assert(sizeof(work_buffer_sym) >= range_coder_info_get_work_size(9));
+  assert(sizeof(work_buffer_dst) >= range_coder_info_get_work_size(12));
 
   struct range_coder_info sym_info;
-  range_coder_info_init(&sym_info, 9, work_buffer);
+  range_coder_info_init(&sym_info, 9, work_buffer_sym);
 
   struct range_coder_info dst_info;
-  range_coder_info_init(
-      &dst_info, 12,
-      work_buffer + (range_coder_info_get_work_size(9) / sizeof(uint32_t)));
+  range_coder_info_init(&dst_info, 12, work_buffer_dst);
 
   struct range_coder_state state;
   range_coder_state_init(&state);
@@ -222,7 +213,6 @@ bool nsmbw_compress_lrc_decode(const uint8_t *src, uint8_t *dst,
   if (src + sizeof(uint32_t) > src_end) {
     nsmbw_compress_print_error(
         "Input file is too small to be a valid compressed LRC file");
-    free(work_buffer);
     return false;
   }
 
@@ -230,10 +220,9 @@ bool nsmbw_compress_lrc_decode(const uint8_t *src, uint8_t *dst,
   src += sizeof(uint32_t);
 
   while (dst_pos < size) {
-    int32_t rc_data_length = src_end - src;
+    uint32_t rc_data_length = src_end - src;
     int ret = range_coder_get_data(src, &sym_info, &state, &rc_data_length);
     if (ret < 0) {
-      free(work_buffer);
       return false;
     }
     src += rc_data_length;
@@ -248,7 +237,6 @@ bool nsmbw_compress_lrc_decode(const uint8_t *src, uint8_t *dst,
     rc_data_length = src_end - src;
     ret = range_coder_get_data(src, &dst_info, &state, &rc_data_length);
     if (ret < 0) {
-      free(work_buffer);
       return false;
     }
     src += rc_data_length;
@@ -257,14 +245,12 @@ bool nsmbw_compress_lrc_decode(const uint8_t *src, uint8_t *dst,
     if (dst_pos + ref_size > size) {
       nsmbw_compress_print_error(
           "LRC reference runs past the end of the output file");
-      free(work_buffer);
       return false;
     }
 
     if (dst_pos < ref_offset) {
       nsmbw_compress_print_error(
           "LRC reference points to before the beginning of the output file");
-      free(work_buffer);
       return false;
     }
 
@@ -280,7 +266,6 @@ bool nsmbw_compress_lrc_decode(const uint8_t *src, uint8_t *dst,
         (size_t)(src_length - (src - src_start)));
   }
 
-  free(work_buffer);
   *dst_length = size;
   return true;
 }

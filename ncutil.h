@@ -1,5 +1,6 @@
 #pragma once
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -12,8 +13,6 @@ void nsmbw_compress_print_error(const char *message, ...);
 void nsmbw_compress_print_warning(const char *message, ...);
 
 void nsmbw_compress_print_verbose(const char *message, ...);
-
-void nsmbw_compress_print_cx_error(bool decompression, int result);
 
 #define ncutil_array_size(arr) (sizeof(arr) / sizeof((arr)[0]))
 

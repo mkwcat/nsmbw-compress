@@ -1,5 +1,5 @@
 #include "nsmbw_compress.h"
-#include "nsmbw_compress_internal.h"
+#include "ncutil.h"
 #include <assert.h>
 #include <errno.h>
 #include <stdlib.h>
@@ -20,8 +20,8 @@ bool nsmbw_compress_rl_decode(const uint8_t *src, uint8_t *dst,
   }
 
   const uint32_t header = ncutil_read_le_u32(src, 0);
-  const enum nsmbw_compress_cx_type type = header & CX_COMPRESSION_TYPE_MASK;
-  if (type != CX_COMPRESSION_TYPE_RUN_LENGTH) {
+  const enum nsmbw_compress_cx_type type = header & nsmbw_compress_cx_type_mask;
+  if (type != nsmbw_compress_cx_type_rl) {
     nsmbw_compress_print_error("Input data is not a CX-RL file");
     return false;
   }
@@ -120,10 +120,10 @@ bool nsmbw_compress_rl_encode(const uint8_t *src, uint8_t *dst,
 
   if (src_length < 0x1000000) {
     ncutil_write_le_u32(dst, 0,
-                        src_length << 8 | CX_COMPRESSION_TYPE_RUN_LENGTH);
+                        src_length << 8 | nsmbw_compress_cx_type_rl);
     dst += sizeof(uint32_t);
   } else {
-    ncutil_write_le_u32(dst, 0, CX_COMPRESSION_TYPE_RUN_LENGTH);
+    ncutil_write_le_u32(dst, 0, nsmbw_compress_cx_type_rl);
     ncutil_write_le_u32(dst, sizeof(uint32_t), src_length);
     dst += sizeof(uint32_t) + sizeof(uint32_t);
   }

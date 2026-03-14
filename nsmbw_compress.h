@@ -18,6 +18,17 @@ enum nsmbw_compress_type {
   nsmbw_compress_type_szs,
 };
 
+enum nsmbw_compress_cx_type {
+  nsmbw_compress_cx_type_lz = 0x10,
+  nsmbw_compress_cx_type_huff = 0x20,
+  nsmbw_compress_cx_type_rl = 0x30,
+  nsmbw_compress_cx_type_lh = 0x40,
+  nsmbw_compress_cx_type_lrc = 0x50,
+  nsmbw_compress_cx_type_filter_diff = 0x80,
+
+  nsmbw_compress_cx_type_mask = 0xF0,
+};
+
 struct nsmbw_compress_parameters {
   uint8_t huff_bit_size;
   uint8_t filter_diff_size;
@@ -90,17 +101,6 @@ extern bool
 nsmbw_compress_szs_decode(const uint8_t *src, uint8_t *dst, size_t src_length,
                           size_t *dst_length,
                           const struct nsmbw_compress_parameters *params);
-
-enum nsmbw_compress_cx_type {
-  CX_COMPRESSION_TYPE_LEMPEL_ZIV = 0x10,
-  CX_COMPRESSION_TYPE_HUFFMAN = 0x20,
-  CX_COMPRESSION_TYPE_RUN_LENGTH = 0x30,
-  CX_COMPRESSION_TYPE_LH = 0x40,
-  CX_COMPRESSION_TYPE_LRC = 0x50,
-  CX_COMPRESSION_TYPE_FILTER_DIFF = 0x80,
-
-  CX_COMPRESSION_TYPE_MASK = 0xf0
-};
 
 #if defined(__cplusplus)
 }
