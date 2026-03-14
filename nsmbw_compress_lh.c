@@ -117,7 +117,7 @@ bool nsmbw_compress_lh_decode(const uint8_t *src, uint8_t *dst,
           "Input file is too small to be a valid compressed LH file");
       return false;
     }
-    read_size = ncutil_read_le_u32(src, 4);
+    read_size = ncutil_read_le_u32(src, 0);
 
     src += sizeof(uint32_t);
   }

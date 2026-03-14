@@ -114,7 +114,7 @@ bool nsmbw_compress_huff_decode(
           "Input file is too small to be a valid compressed Huffman file");
       return false;
     }
-    read_size = ncutil_read_le_u32(src, 4);
+    read_size = ncutil_read_le_u32(src, 0);
 
     src += sizeof(uint32_t);
   }
