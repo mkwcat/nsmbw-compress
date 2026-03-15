@@ -1,23 +1,19 @@
 # nsmbw-compress
 
-Tool for encoding and decoding various different compression formats supported by New Super Mario Bros. Wii, based on a [decompilation of the CX library](https://github.com/doldecomp/sdk_2009-12-11/tree/536dd80cde16989a4914305a1f1095122ab1c44f/source/cx).
+Tool for encoding and decoding various different compression formats supported by
+New Super Mario Bros. Wii, based on
+a [decompilation of the CX library](https://github.com/doldecomp/sdk_2009-12-11/tree/536dd80cde16989a4914305a1f1095122ab1c44f/source/cx).
 
-Supported formats for **compression** are:
-- LZ (nsmbw: `.LZ`)
-- Huffman (`.HUFF`)
-- Run-length (nsmbw: `.RL`)
-- LZ + Huffman (nsmbw: `.LH`)
-  - Encoding may be currently unstable or inefficient.
-- SZS/Yaz0 (nsmbw: `.szs`)
-
-All formats supported by New Super Mario Bros. Wii can be decompressed, which includes the following:
-- LZ (nsmbw: `.LZ`)
-- Huffman (`.HUFF`)
-- Run-length (nsmbw: `.RL`)
-- LZ + Huffman (nsmbw: `.LH`)
-- LRC(?) (nsmbw: `.LRC`)
-- "Filter Diff" (`.DIFF`)
-- SZS/Yaz0 (nsmbw: `.szs`)
+Here's a list of the supported formats:
+| Format        | Extension | Description         | Encode | Decode |
+| ------------- | --------- | ------------------- | ------ | ------ |
+| `lz`          | `.LZ`     | Lempel-Ziv          | Yes    | Yes    |
+| `huff`        | `.HUFF`   | Huffman             | Yes    | Yes    |
+| `rl`          | `.RL`     | Run-length          | Yes    | Yes    |
+| `lh`          | `.LH`     | LZ + Huffman        | Yes    | Yes    |
+| `lrc`         | `.LRC`    | LZ + Range Coder    | No     | Yes    |
+| `filter-diff` | `.DIFF`   | Differential Filter | Yes    | Yes    |
+| `szs`         | `.szs`    | SZS/Yaz0            | Yes    | Yes    |
 
 ## Usage
 ```
@@ -38,6 +34,24 @@ Supported types for decompression:
   lz huff rl lh lrc filter-diff szs 
 ```
 
+## Comparisons
+
+Here is a comparison between compressed sizes of nsmbw-compress and the internal `ntcompress`
+tool used by Nintendo. The file used here is `Kinopio.arc` from New Super Mario Bros. Wii,
+which has an uncompressed size of `381536` bytes. The following table compares the size in bytes
+of the output of each format:
+| Format          | nsmbw-compress | ntcompress | Difference |
+| --------------- | -------------- | ---------- | ---------- |
+| `lz`            | `207177`       | `207455`   | `-278`     |
+| `lz` (old-lz11) | `214355`       | `214638`   | `-283`     |
+| `huff` (4-bit)  | `345836`       | `345836`   | `+0`       |
+| `huff` (8-bit)  | `316208`       | `316208`   | `+0`       |
+| `rl`            | `345406`       | `345406`   | `+0`       |
+| `lh`            | `161429`       | `166692`   | `-5263`    |
+
+In the single file test, the output of nsmbw-compress is either identical to or smaller than the
+output of ntcompress in every supported format, with the greatest savings exhibited in LH.
+
 ## Building
 
 Run the following in the repository root:
@@ -47,3 +61,4 @@ cd build
 cmake ..
 cmake --build .
 ```
+Or simply run your preferred compiler with `*.c` in the repository root.
