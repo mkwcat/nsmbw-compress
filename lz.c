@@ -350,8 +350,6 @@ bool nsmbw_compress_lz_encode(
   struct nsmbw_compress_lz_context context;
   nsmbw_compress_lz_init_context(&context, work_buffer, window_size, false);
 
-  int skip_match_count = 0;
-
   while (src < src_end) {
     uint8_t flags = 0;
     uint8_t *flags_ptr = dst++;
@@ -387,22 +385,47 @@ bool nsmbw_compress_lz_encode(
         return false;
       }
 
-      uint32_t slide_size = match_size;
-      if (match_size != max_match_size && skip_match_count < 2) {
-        // Check if the next byte after the match would allow for a longer match
-        slide_size--;
+      int ahead = 0;
+      if (match_size != max_match_size) {
+        // Check if the next two bytes after the match would allow for a longer
+        // match
+        ahead++;
         nsmbw_compress_lz_slide(&context, src++, 1);
-        uint16_t next_match_distance;
+        uint16_t next_match_distance, next_next_match_distance,
+            next_next_match_size = 0;
         uint32_t next_match_size = nsmbw_compress_lz_search_window(
             &context, src, src_end - src, &next_match_distance, max_match_size);
         if (next_match_size > match_size) {
-          // Write a literal byte now
-          *dst++ = *(src - 1);
-          skip_match_count++;
-          continue;
+          if (next_match_size != max_match_size) {
+            ahead++;
+            nsmbw_compress_lz_slide(&context, src++, 1);
+            next_next_match_size = nsmbw_compress_lz_search_window(
+                &context, src, src_end - src, &next_next_match_distance,
+                max_match_size);
+          }
+          // Write one or two literal bytes now
+          for (int j = 0; j < 1 + (next_next_match_size > next_match_size);
+               j++) {
+            *dst++ = src[0 - ahead + j];
+            flags |= 1;
+            if (++i >= 8) {
+              *flags_ptr = flags;
+              flags = i = 0;
+              flags_ptr = dst++;
+            }
+            flags <<= 1;
+          }
+          if (next_next_match_size > next_match_size) {
+            match_size = next_next_match_size;
+            match_distance = next_next_match_distance;
+            ahead -= 2;
+          } else {
+            match_size = next_match_size;
+            match_distance = next_match_distance;
+            ahead--;
+          }
         }
       }
-      skip_match_count = 0;
 
       // Encoded reference
       flags |= 1;
@@ -434,9 +457,9 @@ bool nsmbw_compress_lz_encode(
       *dst++ = (match_size_byte << 4) | (match_distance - 1) >> 8;
       *dst++ = match_distance - 1;
 
-      nsmbw_compress_lz_slide(&context, src, slide_size);
+      nsmbw_compress_lz_slide(&context, src, match_size - ahead);
 
-      src += slide_size;
+      src += match_size - ahead;
     }
 
     *flags_ptr = flags;
