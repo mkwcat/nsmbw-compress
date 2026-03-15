@@ -181,5 +181,17 @@ static inline int ncutil_bit_reader_read_bit(struct ncutil_bit_reader *reader) {
 }
 
 #ifdef __cplusplus
+#define ncutil_static_cast(type, value) static_cast<type>(value)
+#else
+#define ncutil_static_cast(type, value) ((type)(value))
+#endif
+
+#ifdef __cplusplus
+#define ncutil_restrict_cast(type, value) (value)
+#else
+#define ncutil_restrict_cast(type, value) ((type)(value))
+#endif
+
+#ifdef __cplusplus
 } // extern "C"
 #endif

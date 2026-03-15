@@ -280,7 +280,7 @@ static size_t lz_encode(const uint8_t *restrict src, uint8_t *restrict dst,
         continue;
       }
 
-      uint16_t match_distance;
+      uint32_t match_distance;
       uint32_t match_size = nsmbw_compress_lz_search_window(
           &context, src, src_end - src, &match_distance, max_match_size);
       if (!match_size) {
@@ -303,47 +303,19 @@ static size_t lz_encode(const uint8_t *restrict src, uint8_t *restrict dst,
         return 0;
       }
 
-      int ahead = 0;
-      if (match_size != max_match_size) {
-        // Check if the next two bytes after the match would allow for a longer
-        // match
-        ahead++;
-        nsmbw_compress_lz_slide(&context, src++, 1);
-        uint16_t next_match_distance, next_next_match_distance,
-            next_next_match_size = 0;
-        uint32_t next_match_size = nsmbw_compress_lz_search_window(
-            &context, src, src_end - src, &next_match_distance, max_match_size);
-        if (next_match_size > match_size) {
-          if (next_match_size != max_match_size) {
-            ahead++;
-            nsmbw_compress_lz_slide(&context, src++, 1);
-            next_next_match_size = nsmbw_compress_lz_search_window(
-                &context, src, src_end - src, &next_next_match_distance,
-                max_match_size);
-          }
-          // Write one or two literal bytes now
-          for (int j = 0; j < 1 + (next_next_match_size > next_match_size);
-               j++) {
-            *dst++ = src[0 - ahead + j];
-            nsmbw_compress_huff_count_byte(sym_table->nodes,
-                                           src[0 - ahead + j]);
-            if (++i >= 8) {
-              *flags_ptr = flags;
-              flags = i = 0;
-              flags_ptr = dst++;
-            }
-            flags <<= 1;
-          }
-          if (next_next_match_size > next_match_size) {
-            match_size = next_next_match_size;
-            match_distance = next_next_match_distance;
-            ahead -= 2;
-          } else {
-            match_size = next_match_size;
-            match_distance = next_match_distance;
-            ahead--;
-          }
+      const uint8_t *const literal_ptr = src;
+      int literal_count = nsmbw_compress_lz_search_ahead(
+          &context, ncutil_restrict_cast(const uint8_t **, &src), src_end,
+          max_match_size, &match_size, &match_distance);
+      for (int j = 0; j < literal_count; j++) {
+        *dst++ = literal_ptr[j];
+        nsmbw_compress_huff_count_byte(sym_table->nodes, literal_ptr[j]);
+        if (++i >= 8) {
+          *flags_ptr = flags;
+          flags = i = 0;
+          flags_ptr = dst++;
         }
+        flags <<= 1;
       }
 
       // Encoded reference
@@ -368,9 +340,6 @@ static size_t lz_encode(const uint8_t *restrict src, uint8_t *restrict dst,
       }
       nsmbw_compress_huff_count_byte(dst_table->nodes,
                                      32 - ncutil_clz_u32(match_distance));
-
-      nsmbw_compress_lz_slide(&context, src, match_size - ahead);
-      src += match_size - ahead;
     }
 
     *flags_ptr = flags;

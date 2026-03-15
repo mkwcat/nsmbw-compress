@@ -191,12 +191,13 @@ void nsmbw_compress_lz_init_context(struct nsmbw_compress_lz_context *context,
   context->window_pos = 0;
   context->window_size = 0;
   context->max_window_size = window_size;
+  context->slide_total = 0;
 }
 
 uint32_t
 nsmbw_compress_lz_search_window(const struct nsmbw_compress_lz_context *context,
                                 const uint8_t *data, uint32_t data_size,
-                                uint16_t *restrict match_distance,
+                                uint32_t *restrict match_distance,
                                 uint32_t max_match_size) {
   const lz_size_t window_pos = context->window_pos;
   const lz_size_t window_size = context->window_size;
@@ -260,6 +261,54 @@ nsmbw_compress_lz_search_window(const struct nsmbw_compress_lz_context *context,
   return best_match_size;
 }
 
+int nsmbw_compress_lz_search_ahead(struct nsmbw_compress_lz_context *context,
+                                   const uint8_t **src, const uint8_t *src_end,
+                                   uint32_t max_match_size,
+                                   uint32_t *restrict match_size,
+                                   uint32_t *restrict match_distance) {
+  if (*match_size == max_match_size) {
+    nsmbw_compress_lz_slide(context, *src, max_match_size);
+    *src += max_match_size;
+    return 0;
+  }
+
+  uint32_t slide_base = context->slide_total;
+
+  // Check if the first byte after the current match would allow for a longer
+  // match
+  nsmbw_compress_lz_slide(context, (*src)++, 1);
+  uint32_t next_match_distance, next_next_match_distance;
+  uint32_t next_next_match_size = 0;
+  uint32_t next_match_size = nsmbw_compress_lz_search_window(
+      context, *src, src_end - *src, &next_match_distance, max_match_size);
+  if (next_match_size <= *match_size) {
+    nsmbw_compress_lz_slide(context, *src, *match_size - 1);
+    *src += *match_size - 1;
+    return 0;
+  }
+
+  if (next_match_size != max_match_size) {
+    nsmbw_compress_lz_slide(context, (*src)++, 1);
+    next_next_match_size = nsmbw_compress_lz_search_window(
+        context, *src, src_end - *src, &next_next_match_distance,
+        max_match_size);
+  }
+
+  int literal_count;
+  if (next_next_match_size > next_match_size) {
+    *match_size = next_next_match_size;
+    *match_distance = next_next_match_distance;
+    literal_count = 2;
+  } else {
+    *match_size = next_match_size;
+    *match_distance = next_match_distance;
+    literal_count = 1;
+  }
+  *src += nsmbw_compress_lz_slide_to(context, *src,
+                                     slide_base + literal_count + *match_size);
+  return literal_count;
+}
+
 void nsmbw_compress_lz_slide(struct nsmbw_compress_lz_context *context,
                              const uint8_t *data, uint32_t length) {
   lz_size_t *restrict const st_head = context->skip_table_head;
@@ -312,6 +361,15 @@ void nsmbw_compress_lz_slide(struct nsmbw_compress_lz_context *context,
 
   context->window_pos = window_pos;
   context->window_size = window_size;
+  context->slide_total += length;
+}
+
+size_t nsmbw_compress_lz_slide_to(struct nsmbw_compress_lz_context *context,
+                                  const uint8_t *data, size_t target_offset) {
+  assert(target_offset >= context->slide_total);
+  size_t count = target_offset - context->slide_total;
+  nsmbw_compress_lz_slide(context, data, count);
+  return count;
 }
 
 bool nsmbw_compress_lz_encode(
@@ -360,7 +418,7 @@ bool nsmbw_compress_lz_encode(
         continue;
       }
 
-      uint16_t match_distance;
+      uint32_t match_distance;
       uint32_t match_size = nsmbw_compress_lz_search_window(
           &context, src, src_end - src, &match_distance, max_match_size);
       if (!match_size) {
@@ -385,45 +443,18 @@ bool nsmbw_compress_lz_encode(
         return false;
       }
 
-      int ahead = 0;
-      if (match_size != max_match_size) {
-        // Check if the next two bytes after the match would allow for a longer
-        // match
-        ahead++;
-        nsmbw_compress_lz_slide(&context, src++, 1);
-        uint16_t next_match_distance, next_next_match_distance,
-            next_next_match_size = 0;
-        uint32_t next_match_size = nsmbw_compress_lz_search_window(
-            &context, src, src_end - src, &next_match_distance, max_match_size);
-        if (next_match_size > match_size) {
-          if (next_match_size != max_match_size) {
-            ahead++;
-            nsmbw_compress_lz_slide(&context, src++, 1);
-            next_next_match_size = nsmbw_compress_lz_search_window(
-                &context, src, src_end - src, &next_next_match_distance,
-                max_match_size);
-          }
-          // Write one or two literal bytes now
-          for (int j = 0; j < 1 + (next_next_match_size > next_match_size);
-               j++) {
-            *dst++ = src[0 - ahead + j];
-            if (++i >= 8) {
-              *flags_ptr = flags;
-              flags = i = 0;
-              flags_ptr = dst++;
-            }
-            flags <<= 1;
-          }
-          if (next_next_match_size > next_match_size) {
-            match_size = next_next_match_size;
-            match_distance = next_next_match_distance;
-            ahead -= 2;
-          } else {
-            match_size = next_match_size;
-            match_distance = next_match_distance;
-            ahead--;
-          }
+      const uint8_t *const literal_ptr = src;
+      int literal_count = nsmbw_compress_lz_search_ahead(
+          &context, ncutil_restrict_cast(const uint8_t **, &src), src_end,
+          max_match_size, &match_size, &match_distance);
+      for (int j = 0; j < literal_count; j++) {
+        *dst++ = literal_ptr[j];
+        if (++i >= 8) {
+          *flags_ptr = flags;
+          flags = i = 0;
+          flags_ptr = dst++;
         }
+        flags <<= 1;
       }
 
       // Encoded reference
@@ -455,10 +486,6 @@ bool nsmbw_compress_lz_encode(
 
       *dst++ = (match_size_byte << 4) | (match_distance - 1) >> 8;
       *dst++ = match_distance - 1;
-
-      nsmbw_compress_lz_slide(&context, src, match_size - ahead);
-
-      src += match_size - ahead;
     }
 
     *flags_ptr = flags;
