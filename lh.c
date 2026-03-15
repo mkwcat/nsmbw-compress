@@ -269,6 +269,8 @@ static size_t lz_encode(const uint8_t *restrict src, uint8_t *restrict dst,
   nsmbw_compress_lz_init_context(&context, work_buffer,
                                  lh_encode_lz_window_size, true);
 
+  int skip_match_count = 0;
+
   while (src < src_end) {
     uint8_t flags = 0;
     uint8_t *flags_ptr = dst++;
@@ -296,14 +298,31 @@ static size_t lz_encode(const uint8_t *restrict src, uint8_t *restrict dst,
         continue;
       }
 
-      // Encoded reference
-      flags |= 1;
-
       if (dst + 5 > dst_end) {
         nsmbw_compress_print_error("Output file is too much larger than the "
                                    "input file; aborting compression");
         return 0;
       }
+
+      uint32_t slide_size = match_size;
+      if (match_size != max_match_size && skip_match_count < 2) {
+        // Check if the next byte after the match would allow for a longer match
+        slide_size--;
+        nsmbw_compress_lz_slide(&context, src++, 1);
+        uint16_t next_match_distance;
+        uint32_t next_match_size = nsmbw_compress_lz_search_window(
+            &context, src, src_end - src, &next_match_distance, max_match_size);
+        if (next_match_size > match_size && next_match_size != max_match_size) {
+          // Write a literal byte now
+          *dst++ = *(src - 1);
+          skip_match_count++;
+          continue;
+        }
+      }
+      skip_match_count = 0;
+
+      // Encoded reference
+      flags |= 1;
 
       // Encoding is only used internally by nsmbw_compress_lh_encode
       uint32_t match_size_byte = match_size - 3;
@@ -325,8 +344,8 @@ static size_t lz_encode(const uint8_t *restrict src, uint8_t *restrict dst,
       nsmbw_compress_huff_count_byte(dst_table->nodes,
                                      32 - ncutil_clz_u32(match_distance));
 
-      nsmbw_compress_lz_slide(&context, src, match_size);
-      src += match_size;
+      nsmbw_compress_lz_slide(&context, src, slide_size);
+      src += slide_size;
     }
 
     *flags_ptr = flags;

@@ -350,6 +350,8 @@ bool nsmbw_compress_lz_encode(
   struct nsmbw_compress_lz_context context;
   nsmbw_compress_lz_init_context(&context, work_buffer, window_size, false);
 
+  int skip_match_count = 0;
+
   while (src < src_end) {
     uint8_t flags = 0;
     uint8_t *flags_ptr = dst++;
@@ -386,7 +388,7 @@ bool nsmbw_compress_lz_encode(
       }
 
       uint32_t slide_size = match_size;
-      if (match_size != max_match_size) {
+      if (match_size != max_match_size && skip_match_count < 2) {
         // Check if the next byte after the match would allow for a longer match
         slide_size--;
         nsmbw_compress_lz_slide(&context, src++, 1);
@@ -396,9 +398,11 @@ bool nsmbw_compress_lz_encode(
         if (next_match_size > match_size && next_match_size != max_match_size) {
           // Write a literal byte now
           *dst++ = *(src - 1);
+          skip_match_count++;
           continue;
         }
       }
+      skip_match_count = 0;
 
       // Encoded reference
       flags |= 1;
