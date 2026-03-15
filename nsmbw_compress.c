@@ -425,54 +425,65 @@ static bool get_uncompress_info(const void *input_data, size_t input_size,
   }
 
   enum nsmbw_compress_cx_type cx_type = header & nsmbw_compress_cx_type_mask;
-  uint8_t cx_stat = header & 0x0F;
+  uint8_t cx_option = header & 0x0F;
   switch (cx_type) {
   case nsmbw_compress_cx_type_lz:
     *compression_type = nsmbw_compress_type_lz;
-    if (cx_stat != 0 && cx_stat != 1) {
+    if (cx_option != 0 && cx_option != 1) {
       nsmbw_compress_print_error(
-          "Input file has unrecognized LZ compression option: %d", cx_stat);
+          "Input file has unrecognized LZ compression option: %d", cx_option);
       return false;
     }
     break;
   case nsmbw_compress_cx_type_huff:
     *compression_type = nsmbw_compress_type_huff;
-    if (cx_stat != 4 && cx_stat != 8) {
+    if (cx_option != 4 && cx_option != 8) {
       nsmbw_compress_print_error(
-          "Input file has unrecognized Huffman bit size: %d", cx_stat);
+          "Input file has unrecognized Huffman bit size: %d", cx_option);
       return false;
     }
     break;
   case nsmbw_compress_cx_type_rl:
     *compression_type = nsmbw_compress_type_rl;
-    if (cx_stat != 0) {
-      nsmbw_compress_print_warning(
+    if (cx_option != 0) {
+      nsmbw_compress_print_error(
           "Input file specifies non-zero option for RL compression: %d",
-          cx_stat);
+          cx_option);
+      return false;
     }
     break;
   case nsmbw_compress_cx_type_lh:
     *compression_type = nsmbw_compress_type_lh;
-    if (cx_stat != 0) {
-      nsmbw_compress_print_warning(
+    if (cx_option != 0) {
+      nsmbw_compress_print_error(
           "Input file specifies non-zero option for LH compression: %d",
-          cx_stat);
+          cx_option);
+      return false;
     }
     break;
   case nsmbw_compress_cx_type_lrc:
     *compression_type = nsmbw_compress_type_lrc;
-    if (cx_stat != 0) {
-      nsmbw_compress_print_warning(
+    if (cx_option != 0) {
+      if (header == 0x2D38AA55) {
+        // Explicit check for DARCH (a.k.a. arc or U8) header to provide a more
+        // specific error message
+        nsmbw_compress_print_error("Input file is not compressed");
+        return false;
+      }
+
+      nsmbw_compress_print_error(
           "Input file specifies non-zero option for LRC compression: %d",
-          cx_stat);
+          cx_option);
+      return false;
     }
     break;
   case nsmbw_compress_cx_type_filter_diff:
     *compression_type = nsmbw_compress_type_filter_diff;
-    if (cx_stat != 0 && cx_stat != 1) {
-      nsmbw_compress_print_warning("Input file has unrecognized filter-diff "
-                                   "size flag (%d), assuming 16-bit filter",
-                                   cx_stat);
+    if (cx_option != 0 && cx_option != 1) {
+      nsmbw_compress_print_error("Input file has unrecognized filter-diff "
+                                 "size flag (%d)",
+                                 cx_option);
+      return false;
     }
     break;
   default:

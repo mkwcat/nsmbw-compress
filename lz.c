@@ -378,15 +378,30 @@ bool nsmbw_compress_lz_encode(
         continue;
       }
 
-      // Encoded reference
-      flags |= 1;
-
       if (dst + 2 > dst_end) {
         nsmbw_compress_print_error("Output file is too much larger than the "
                                    "input file; aborting compression");
         free(work_buffer);
         return false;
       }
+
+      uint32_t slide_size = match_size;
+      if (match_size != max_match_size) {
+        // Check if the next byte after the match would allow for a longer match
+        slide_size--;
+        nsmbw_compress_lz_slide(&context, src++, 1);
+        uint16_t next_match_distance;
+        uint32_t next_match_size = nsmbw_compress_lz_search_window(
+            &context, src, src_end - src, &next_match_distance, max_match_size);
+        if (next_match_size > match_size && next_match_size != max_match_size) {
+          // Write a literal byte now
+          *dst++ = *(src - 1);
+          continue;
+        }
+      }
+
+      // Encoded reference
+      flags |= 1;
 
       uint32_t match_size_byte = match_size - 3;
 
@@ -415,9 +430,9 @@ bool nsmbw_compress_lz_encode(
       *dst++ = (match_size_byte << 4) | (match_distance - 1) >> 8;
       *dst++ = match_distance - 1;
 
-      nsmbw_compress_lz_slide(&context, src, match_size);
+      nsmbw_compress_lz_slide(&context, src, slide_size);
 
-      src += match_size;
+      src += slide_size;
     }
 
     *flags_ptr = flags;
