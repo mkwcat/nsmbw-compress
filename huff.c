@@ -13,8 +13,7 @@ static const huff_size_t huff_invalid_node = nsmbw_compress_huff_invalid_node;
 bool nsmbw_compress_huff_verify_table(const uint16_t *table,
                                       uint8_t huff_bit_size,
                                       uint8_t flags_bit_offset) {
-  assert(ncutil_is_aligned_ptr(sizeof(uint32_t), table));
-
+  const uint16_t *const table_start = table;
   const uint16_t table_size = *table++;
 
   if (table_size > 1 << (huff_bit_size + 1)) {
@@ -40,8 +39,7 @@ bool nsmbw_compress_huff_verify_table(const uint16_t *table,
 
     uint32_t tree_size = ((*table & sym_mask) + 1) << 1;
     const uint16_t *tree_end =
-        ((const uint16_t *)ncutil_align_down_ptr(sizeof(uint32_t), table)) +
-        tree_size;
+        (table - ((table - table_start) & 1 ? 1 : 0)) + tree_size;
 
     if (tree_end >= end) {
       return false;
@@ -134,7 +132,7 @@ bool nsmbw_compress_huff_decode(
 
   const uint32_t size = read_size;
   const uint8_t *const dst_end = dst + size;
-  const uint8_t *const table = src + 1;
+  const uint8_t *const table = src;
   const uint16_t table_size = (*src + 1) << 1;
 
   if (src + table_size > src_end) {
@@ -143,13 +141,13 @@ bool nsmbw_compress_huff_decode(
     return false;
   }
 
-  if (!huff_verify_table_u8(src, huff_bit_size)) {
+  if (!huff_verify_table_u8(table, huff_bit_size)) {
     return false;
   }
 
   src += table_size;
 
-  const uint8_t *table_cur = table;
+  const uint8_t *table_cur = table + 1;
   uint32_t decoded = 0;
   int word_it = 0;
   // 32 / huff_bit_size
@@ -174,7 +172,7 @@ bool nsmbw_compress_huff_decode(
       static const uint16_t leaf_flags_mask = left_leaf_flag | right_leaf_flag;
 
       const uint8_t *table_align =
-          (const uint8_t *)ncutil_align_down_ptr(2, table_cur);
+          table_cur - ((table_cur - table) & 1 ? 1 : 0);
       table_cur =
           table_align + (((*table_cur & ~leaf_flags_mask) + 1) << 1) + branch;
 
@@ -183,7 +181,7 @@ bool nsmbw_compress_huff_decode(
       }
       decoded >>= huff_bit_size;
       decoded |= (uint32_t)*table_cur << (32 - huff_bit_size);
-      table_cur = table;
+      table_cur = table + 1;
       word_it++;
 
       if (dst + (word_it * huff_bit_size >> 3) >= dst_end) {
@@ -194,13 +192,13 @@ bool nsmbw_compress_huff_decode(
 
       *dst++ = decoded & 0xFF;
       if (dst < dst_end) {
-        *dst++ = decoded >> 8;
+        *dst++ = (decoded >> 8) & 0xFF;
       }
       if (dst < dst_end) {
-        *dst++ = decoded >> 16;
+        *dst++ = (decoded >> 16) & 0xFF;
       }
       if (dst < dst_end) {
-        *dst++ = decoded >> 24;
+        *dst++ = (decoded >> 24) & 0xFF;
       }
       if (dst >= dst_end) {
         break;
@@ -722,8 +720,8 @@ bool nsmbw_compress_huff_encode(
 
   while (length % 4 != 0) {
     if (length % 2 != 0) {
-      ++table.tree_count;
-      ++dst[tree_length_pos];
+      table.tree_count++;
+      dst[tree_length_pos]++;
     }
 
     dst[length++] = 0;

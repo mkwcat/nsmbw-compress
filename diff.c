@@ -60,7 +60,7 @@ bool nsmbw_compress_diff_decode(
     }
     if (size % 2 != 0) {
       sum += ncutil_read_le_u16(src, size - 1);
-      dst[size - 1] = (uint8_t)sum;
+      dst[size - 1] = sum & 0xFF;
     }
   }
 
@@ -95,7 +95,7 @@ bool nsmbw_compress_diff_encode(
   if (params->filter_diff_size == 8) {
     for (i = 0; i < src_length; i++) {
       uint8_t cur = src[i];
-      dst[i + dst_offset] = (uint8_t)(cur - sum);
+      dst[i + dst_offset] = (cur - sum) & 0xFF;
       sum = cur;
     }
   } else {
@@ -108,7 +108,7 @@ bool nsmbw_compress_diff_encode(
         // with the high byte set to 0
         cur = src[i];
       }
-      ncutil_write_le_u16(dst, i + dst_offset, cur - sum);
+      ncutil_write_le_u16(dst, i + dst_offset, (cur - sum) & 0xFFFF);
       sum = cur;
     }
   }
