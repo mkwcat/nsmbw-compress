@@ -15,19 +15,16 @@ static const nsmbw_compress_function compress_functions[][2] = {
     [nsmbw_compress_type_lh] = {nsmbw_compress_lh_encode,
                                 nsmbw_compress_lh_decode},
     [nsmbw_compress_type_lrc] = {NULL, nsmbw_compress_lrc_decode},
-    [nsmbw_compress_type_filter_diff] = {nsmbw_compress_filter_diff_encode,
-                                         nsmbw_compress_filter_diff_decode},
+    [nsmbw_compress_type_diff] = {nsmbw_compress_diff_encode,
+                                  nsmbw_compress_diff_decode},
     [nsmbw_compress_type_szs] = {nsmbw_compress_szs_encode,
                                  nsmbw_compress_szs_decode},
 };
 
 static const char *compression_type_names[] = {
-    [nsmbw_compress_type_lz] = "lz",
-    [nsmbw_compress_type_huff] = "huff",
-    [nsmbw_compress_type_rl] = "rl",
-    [nsmbw_compress_type_lh] = "lh",
-    [nsmbw_compress_type_lrc] = "lrc",
-    [nsmbw_compress_type_filter_diff] = "filter-diff",
+    [nsmbw_compress_type_lz] = "lz",   [nsmbw_compress_type_huff] = "huff",
+    [nsmbw_compress_type_rl] = "rl",   [nsmbw_compress_type_lh] = "lh",
+    [nsmbw_compress_type_lrc] = "lrc", [nsmbw_compress_type_diff] = "diff",
     [nsmbw_compress_type_szs] = "szs",
 };
 

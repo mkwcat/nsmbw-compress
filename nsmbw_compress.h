@@ -14,7 +14,7 @@ enum nsmbw_compress_type {
   nsmbw_compress_type_rl,
   nsmbw_compress_type_lh,
   nsmbw_compress_type_lrc,
-  nsmbw_compress_type_filter_diff,
+  nsmbw_compress_type_diff,
   nsmbw_compress_type_szs,
 };
 
@@ -24,7 +24,7 @@ enum nsmbw_compress_cx_type {
   nsmbw_compress_cx_type_rl = 0x30,
   nsmbw_compress_cx_type_lh = 0x40,
   nsmbw_compress_cx_type_lrc = 0x50,
-  nsmbw_compress_cx_type_filter_diff = 0x80,
+  nsmbw_compress_cx_type_diff = 0x80,
 
   nsmbw_compress_cx_type_mask = 0xF0,
 };
@@ -84,13 +84,15 @@ nsmbw_compress_lrc_decode(const uint8_t *src, uint8_t *dst, size_t src_length,
                           size_t *dst_length,
                           const struct nsmbw_compress_parameters *params);
 
-extern bool nsmbw_compress_filter_diff_encode(
-    const uint8_t *src, uint8_t *dst, size_t src_length, size_t *dst_length,
-    const struct nsmbw_compress_parameters *params);
+extern bool
+nsmbw_compress_diff_encode(const uint8_t *src, uint8_t *dst, size_t src_length,
+                           size_t *dst_length,
+                           const struct nsmbw_compress_parameters *params);
 
-extern bool nsmbw_compress_filter_diff_decode(
-    const uint8_t *src, uint8_t *dst, size_t src_length, size_t *dst_length,
-    const struct nsmbw_compress_parameters *params);
+extern bool
+nsmbw_compress_diff_decode(const uint8_t *src, uint8_t *dst, size_t src_length,
+                           size_t *dst_length,
+                           const struct nsmbw_compress_parameters *params);
 
 extern bool
 nsmbw_compress_szs_encode(const uint8_t *src, uint8_t *dst, size_t src_length,

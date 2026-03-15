@@ -26,29 +26,23 @@ static const nsmbw_compress_function compress_functions[][2] = {
     [nsmbw_compress_type_lh] = {nsmbw_compress_lh_encode,
                                 nsmbw_compress_lh_decode},
     [nsmbw_compress_type_lrc] = {NULL, nsmbw_compress_lrc_decode},
-    [nsmbw_compress_type_filter_diff] = {nsmbw_compress_filter_diff_encode,
-                                         nsmbw_compress_filter_diff_decode},
+    [nsmbw_compress_type_diff] = {nsmbw_compress_diff_encode,
+                                  nsmbw_compress_diff_decode},
     [nsmbw_compress_type_szs] = {nsmbw_compress_szs_encode,
                                  nsmbw_compress_szs_decode},
 };
 
 static const char *compression_type_names[] = {
-    [nsmbw_compress_type_lz] = "lz",
-    [nsmbw_compress_type_huff] = "huff",
-    [nsmbw_compress_type_rl] = "rl",
-    [nsmbw_compress_type_lh] = "lh",
-    [nsmbw_compress_type_lrc] = "lrc",
-    [nsmbw_compress_type_filter_diff] = "filter-diff",
+    [nsmbw_compress_type_lz] = "lz",   [nsmbw_compress_type_huff] = "huff",
+    [nsmbw_compress_type_rl] = "rl",   [nsmbw_compress_type_lh] = "lh",
+    [nsmbw_compress_type_lrc] = "lrc", [nsmbw_compress_type_diff] = "diff",
     [nsmbw_compress_type_szs] = "szs",
 };
 
 static const char *compression_default_extensions[] = {
-    [nsmbw_compress_type_lz] = ".LZ",
-    [nsmbw_compress_type_huff] = ".HUFF",
-    [nsmbw_compress_type_rl] = ".RL",
-    [nsmbw_compress_type_lh] = ".LH",
-    [nsmbw_compress_type_lrc] = ".LRC",
-    [nsmbw_compress_type_filter_diff] = ".DIFF",
+    [nsmbw_compress_type_lz] = ".LZ",   [nsmbw_compress_type_huff] = ".HUFF",
+    [nsmbw_compress_type_rl] = ".RL",   [nsmbw_compress_type_lh] = ".LH",
+    [nsmbw_compress_type_lrc] = ".LRC", [nsmbw_compress_type_diff] = ".DIFF",
     [nsmbw_compress_type_szs] = ".szs",
 };
 
@@ -198,8 +192,8 @@ static enum nsmbw_compress_type compress_type_from_str(const char *str) {
     return nsmbw_compress_type_lh;
   } else if (strcmp(str, "lrc") == 0) {
     return nsmbw_compress_type_lrc;
-  } else if (strcmp(str, "filter-diff") == 0) {
-    return nsmbw_compress_type_filter_diff;
+  } else if (strcmp(str, "diff") == 0) {
+    return nsmbw_compress_type_diff;
   } else if (strcmp(str, "szs") == 0) {
     return nsmbw_compress_type_szs;
   } else {
@@ -265,10 +259,10 @@ static int exit_print_help() {
   for (size_t i = 0; i < argument_count; i++) {
     const struct nsmbw_compress_argument *arg = &arguments[i];
     if (arg->short_name) {
-      printf("  -%c, --%-8s %s\n", arg->short_name, arg->long_name,
+      printf("  -%c, --%-9s %s\n", arg->short_name, arg->long_name,
              arg->description);
     } else {
-      printf("      --%-8s %s\n", arg->long_name, arg->description);
+      printf("      --%-9s %s\n", arg->long_name, arg->description);
     }
   }
   printf("Supported types for compression:\n"
@@ -477,8 +471,8 @@ static bool get_uncompress_info(const void *input_data, size_t input_size,
       return false;
     }
     break;
-  case nsmbw_compress_cx_type_filter_diff:
-    *compression_type = nsmbw_compress_type_filter_diff;
+  case nsmbw_compress_cx_type_diff:
+    *compression_type = nsmbw_compress_type_diff;
     if (cx_option != 0 && cx_option != 1) {
       nsmbw_compress_print_error("Input file has unrecognized filter-diff "
                                  "size flag (%d)",
@@ -494,7 +488,7 @@ static bool get_uncompress_info(const void *input_data, size_t input_size,
 
   *expanded_size = header >> 8;
   if (*expanded_size == 0) {
-    if (cx_type == nsmbw_compress_cx_type_filter_diff) {
+    if (cx_type == nsmbw_compress_cx_type_diff) {
       nsmbw_compress_print_error(
           "Invalid zero size in filter-diff input file header");
       return false;
