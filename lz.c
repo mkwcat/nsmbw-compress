@@ -395,7 +395,7 @@ bool nsmbw_compress_lz_encode(
         uint16_t next_match_distance;
         uint32_t next_match_size = nsmbw_compress_lz_search_window(
             &context, src, src_end - src, &next_match_distance, max_match_size);
-        if (next_match_size > match_size && next_match_size != max_match_size) {
+        if (next_match_size > match_size) {
           // Write a literal byte now
           *dst++ = *(src - 1);
           skip_match_count++;

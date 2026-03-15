@@ -1,8 +1,12 @@
-#include "nsmbw_compress.h"
+#include "lz.h"
 #include "ncutil.h"
+#include "nsmbw_compress.h"
+#include <assert.h>
+#include <errno.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 // Reference: EGG::Decomp::decodeSZS from ogws
@@ -11,9 +15,18 @@ bool nsmbw_compress_szs_decode(const uint8_t *src, uint8_t *dst,
                                const struct nsmbw_compress_parameters *params) {
   (void)params;
 
+  if (src_length < 0x10 || src[0] != 'Y' || src[1] != 'a' || src[2] != 'z' ||
+      (src[3] != '0' && src[3] != '1')) {
+    nsmbw_compress_print_error("Input data is not a valid SZS file");
+    return false;
+  }
+
   size_t expand_size = ncutil_read_be_u32(src, 4);
-  if (expand_size != *dst_length) {
-    return false; // Output size mismatch
+  assert(expand_size <= *dst_length);
+  if (expand_size > *dst_length) {
+    nsmbw_compress_print_error(
+        "Output buffer is too small for decompressed data in SZS file");
+    return false;
   }
   size_t src_index = 0x10u; // Skip header
   uint8_t bit = 0;
@@ -21,7 +34,8 @@ bool nsmbw_compress_szs_decode(const uint8_t *src, uint8_t *dst,
 
   for (size_t dst_index = 0; dst_index < expand_size; bit >>= 1) {
     if (src_index >= src_length) {
-      return false; // Ran out of input data
+      nsmbw_compress_print_error("Input SZS data ended prematurely");
+      return false;
     }
 
     // Refresh code bits
@@ -39,7 +53,8 @@ bool nsmbw_compress_szs_decode(const uint8_t *src, uint8_t *dst,
     // Back-reference (chunk bit is not set)
     // Next bytes contain run offset, length
     if (src_index + 1 >= src_length) {
-      return false; // Ran out of input data
+      nsmbw_compress_print_error("Input SZS data ended prematurely");
+      return false;
     }
     unsigned packed = src[src_index] << 8 | src[src_index + 1];
     src_index += 2u;
@@ -48,12 +63,15 @@ bool nsmbw_compress_szs_decode(const uint8_t *src, uint8_t *dst,
     //     NF FF (N=size, F=offset)
     // Minimum run size is 2 (overhead)
     //
-    // Long runs (N <= 255 + 3) use three bytes:
+    // Long runs (N <= 255 + 15 + 3) use three bytes:
     //     0F FF NN (N=size, F=offset)
     // Minimum run size is 0xF (max short run) + 3 (overhead)
 
     if ((packed & 0x0FFFu) > dst_index) {
-      return false; // Run would reference before start of output
+      nsmbw_compress_print_error("Out of bounds reference in SZS compressed "
+                                 "file (offset %u at output position %zu)",
+                                 packed & 0x0FFFu, dst_index);
+      return false;
     }
     unsigned run_index = dst_index - (packed & 0x0FFFu);
     unsigned run_length = (packed >> 12) == 0
@@ -61,7 +79,11 @@ bool nsmbw_compress_szs_decode(const uint8_t *src, uint8_t *dst,
                               : (packed >> 12) + 2;        // Short run
 
     if (expand_size - dst_index < run_length) {
-      return false; // Run would exceed output buffer
+      nsmbw_compress_print_error(
+          "Reference overflows output size in SZS compressed file (offset %u, "
+          "size %u at output position %zu with output size %zu)",
+          packed & 0x0FFFu, run_length, dst_index, expand_size);
+      return false;
     }
 
     for (; run_length > 0; run_length--, dst_index++, run_index++) {
@@ -69,163 +91,10 @@ bool nsmbw_compress_szs_decode(const uint8_t *src, uint8_t *dst,
     }
   }
 
+  *dst_length = expand_size;
   return true;
 }
 
-static void nintendo_compute_skip_table(uint16_t *skip_table,
-                                        const uint8_t *needle,
-                                        int needle_size) {
-  for (int i = 0; i < 256; ++i) {
-    skip_table[i] = needle_size;
-  }
-  for (int i = 0; i < needle_size; ++i) {
-    skip_table[needle[i]] = needle_size - i - 1;
-  }
-}
-
-static int nintendo_search_window(const uint8_t *needle, int needle_size,
-                                  const uint8_t *haystack, int haystack_size) {
-  int it_haystack, it_needle, skip;
-
-  if (needle_size > haystack_size) {
-    return haystack_size;
-  }
-  uint16_t skip_table[256];
-  nintendo_compute_skip_table(skip_table, needle, needle_size);
-
-  // Scan forwards for the last character in the needle
-  for (it_haystack = needle_size - 1;;) {
-    while (true) {
-      if (needle[needle_size - 1] == haystack[it_haystack]) {
-        break;
-      }
-      it_haystack += skip_table[haystack[it_haystack]];
-    }
-    --it_haystack;
-    it_needle = needle_size - 2;
-    break;
-  difference:
-    // The entire needle was not found, continue search
-    skip = skip_table[haystack[it_haystack]];
-    if (needle_size - it_needle > skip)
-      skip = needle_size - it_needle;
-    it_haystack += skip;
-  }
-
-  // Scan backwards for the first difference
-  int remaining_bytes = it_needle;
-  for (int j = 0; j <= remaining_bytes; ++j) {
-    if (haystack[it_haystack] != needle[it_needle]) {
-      goto difference;
-    }
-    --it_haystack;
-    --it_needle;
-  }
-  return it_haystack + 1;
-}
-
-static void nintendo_find_match(const uint8_t *src, int src_pos, int max_size,
-                                int *match_offset, int *match_size) {
-  // SZS backreference types:
-  // (2 bytes) N >= 2:  NR RR    -> max_match_size=16+2,    window_offset=4096+1
-  // (3 bytes) N >= 18: 0R RR NN -> max_match_size=0xFF+18, window_offset=4096+1
-  int window = src_pos > 4096 ? src_pos - 4096 : 0;
-  int window_size = 3;
-  int max_match_size = (max_size - src_pos) <= 273 ? max_size - src_pos : 273;
-  if (max_match_size < 3) {
-    *match_size = 0;
-    *match_offset = 0;
-    return;
-  }
-
-  int window_offset;
-  int found_match_offset;
-  while (window < src_pos &&
-         (window_offset = nintendo_search_window(
-              &src[src_pos], window_size, &src[window],
-              src_pos + window_size - window)) < src_pos - window) {
-    for (; window_size < max_match_size; ++window_size) {
-      if (src[window + window_offset + window_size] !=
-          src[src_pos + window_size])
-        break;
-    }
-    if (window_size == max_match_size) {
-      *match_offset = window + window_offset;
-      *match_size = max_match_size;
-      return;
-    }
-    found_match_offset = window + window_offset;
-    ++window_size;
-    window += window_offset + 1;
-  }
-  *match_offset = found_match_offset;
-  *match_size = window_size > 3 ? window_size - 1 : 0;
-}
-
-static bool nintendo_encode_szs(const uint8_t *src, uint8_t *dst,
-                                size_t src_length, size_t *dst_length) {
-  dst[16] = 0;
-  int src_pos = 0;
-  uint8_t group_header_bit_raw = 0x80;
-  int group_header_pos = 16;
-  int dst_pos = 17;
-  while (src_pos < src_length) {
-    int match_offset;
-    int first_match_len;
-    nintendo_find_match(src, src_pos, src_length, &match_offset,
-                        &first_match_len);
-    if (first_match_len > 2) {
-      int second_match_offset;
-      int second_match_len;
-      nintendo_find_match(src, src_pos + 1, src_length, &second_match_offset,
-                          &second_match_len);
-      if (first_match_len + 1 < second_match_len) {
-        // Put a single byte
-        dst[group_header_pos] |= group_header_bit_raw;
-        group_header_bit_raw = group_header_bit_raw >> 1;
-        dst[dst_pos++] = src[src_pos++];
-        if (!group_header_bit_raw) {
-          group_header_bit_raw = 0x80;
-          group_header_pos = dst_pos;
-          dst[dst_pos++] = 0;
-        }
-        // Use the second match
-        first_match_len = second_match_len;
-        match_offset = second_match_offset;
-      }
-      match_offset = src_pos - match_offset - 1;
-      if (first_match_len < 18) {
-        match_offset |= ((first_match_len - 2) << 12);
-        dst[dst_pos] = match_offset >> 8;
-        dst[dst_pos + 1] = match_offset;
-        dst_pos += 2;
-      } else {
-        dst[dst_pos] = match_offset >> 8;
-        dst[dst_pos + 1] = match_offset;
-        dst[dst_pos + 2] = first_match_len - 18;
-        dst_pos += 3;
-      }
-      src_pos += first_match_len;
-    } else {
-      // Put a single byte
-      dst[group_header_pos] |= group_header_bit_raw;
-      dst[dst_pos++] = src[src_pos++];
-    }
-
-    // Write next group header
-    group_header_bit_raw >>= 1;
-    if (!group_header_bit_raw) {
-      group_header_bit_raw = 0x80;
-      group_header_pos = dst_pos;
-      dst[dst_pos++] = 0;
-    }
-  }
-
-  *dst_length = dst_pos;
-  return true;
-}
-
-// Reference: EGG::encodeSZS from mkw_old
 bool nsmbw_compress_szs_encode(const uint8_t *src, uint8_t *dst,
                                size_t src_length, size_t *dst_length,
                                const struct nsmbw_compress_parameters *params) {
@@ -234,15 +103,123 @@ bool nsmbw_compress_szs_encode(const uint8_t *src, uint8_t *dst,
     return false;
   }
 
+  static const uint32_t window_size = 0x1000;
+  const unsigned max_match_size = 255 + 15 + 3;
+  const size_t max_dst_size = *dst_length;
+  const uint8_t *dst_start = dst;
+  const uint8_t *dst_end = dst + max_dst_size;
+  const uint8_t *src_end = src + src_length;
+
   dst[0] = 'Y';
   dst[1] = 'a';
   dst[2] = 'z';
   dst[3] = '0';
-  dst[4] = src_length >> 24;
-  dst[5] = src_length >> 16;
-  dst[6] = src_length >> 8;
-  dst[7] = src_length;
+  ncutil_write_be_u32(dst, 4, src_length);
   memset(dst + 8, 0, 8); // Unused padding bytes
 
-  return nintendo_encode_szs(src, dst, src_length, dst_length);
+  dst += 0x10;
+
+  void *work_buffer =
+      malloc(nsmbw_compress_lz_get_work_size(window_size, false));
+  if (work_buffer == NULL) {
+    nsmbw_compress_print_error(
+        "Failed to allocate memory for LZ compression work buffer: %s",
+        strerror(errno));
+    return false;
+  }
+
+  struct nsmbw_compress_lz_context context;
+  nsmbw_compress_lz_init_context(&context, work_buffer, window_size, false);
+
+  int skip_match_count = 0;
+
+  while (src < src_end) {
+    uint8_t flags = 0;
+    uint8_t *flags_ptr = dst++;
+
+    for (int i = 0; i < 8; i++) {
+      flags <<= 1;
+      if (src >= src_end) {
+        continue;
+      }
+
+      uint16_t match_distance;
+      uint32_t match_size = nsmbw_compress_lz_search_window(
+          &context, src, src_end - src, &match_distance, max_match_size);
+      if (!match_size) {
+        // Literal byte
+        flags |= 1;
+
+        if (dst + 1 > dst_end) {
+          nsmbw_compress_print_error("Output file is too much larger than the "
+                                     "input file; aborting compression");
+          free(work_buffer);
+          return false;
+        }
+
+        nsmbw_compress_lz_slide(&context, src, 1);
+        *dst++ = *src++;
+
+        continue;
+      }
+
+      if (dst + 2 > dst_end) {
+        nsmbw_compress_print_error("Output file is too much larger than the "
+                                   "input file; aborting compression");
+        free(work_buffer);
+        return false;
+      }
+
+      uint32_t slide_size = match_size;
+      if (match_size != max_match_size && skip_match_count < 2) {
+        // Check if the next byte after the match would allow for a longer match
+        slide_size--;
+        nsmbw_compress_lz_slide(&context, src++, 1);
+        uint16_t next_match_distance;
+        uint32_t next_match_size = nsmbw_compress_lz_search_window(
+            &context, src, src_end - src, &next_match_distance, max_match_size);
+        if (next_match_size > match_size) {
+          // Write a literal byte now
+          *dst++ = *(src - 1);
+          flags |= 1;
+          skip_match_count++;
+          continue;
+        }
+      }
+      skip_match_count = 0;
+
+      // Encoded reference
+
+      uint32_t match_size_byte = match_size - 2;
+
+      if (match_size >= 15 + 3) {
+        match_size_byte = 0;
+      }
+
+      if (dst + 3 > dst_end) {
+        nsmbw_compress_print_error("Output file is too much larger than the "
+                                   "input file; aborting compression");
+        free(work_buffer);
+        return false;
+      }
+
+      *dst++ = (match_size_byte << 4) | (match_distance - 1) >> 8;
+      *dst++ = match_distance - 1;
+
+      if (match_size >= 15 + 3) {
+        *dst++ = match_size - 15 - 3;
+      }
+
+      nsmbw_compress_lz_slide(&context, src, slide_size);
+
+      src += slide_size;
+    }
+
+    *flags_ptr = flags;
+  }
+
+  free(work_buffer);
+
+  *dst_length = dst - dst_start;
+  return true;
 }
