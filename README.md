@@ -40,16 +40,16 @@ Here is a comparison between compressed sizes of nsmbw-compress and the internal
 tool used by Nintendo. The file used here is `Kinopio.arc` from New Super Mario Bros. Wii,
 which has an uncompressed size of `381536` bytes. The following table compares the size in bytes
 of the output of each format:
-| Format          | nsmbw-compress | ntcompress | Difference |
-| --------------- | -------------- | ---------- | ---------- |
-| `lz`            | `207177`       | `207455`   | `-278`     |
-| `lz` (old-lz11) | `214355`       | `214638`   | `-283`     |
-| `huff` (4-bit)  | `345836`       | `345836`   | `+0`       |
-| `huff` (8-bit)  | `316208`       | `316208`   | `+0`       |
-| `rl`            | `345406`       | `345406`   | `+0`       |
-| `lh`            | `161429`       | `166692`   | `-5263`    |
+| Format          | nsmbw-compress | ntcompress         |
+| --------------- | -------------- | ------------------ |
+| `lz`            | `205549`       | `207455` (`+1906`) |
+| `lz` (old-lz11) | `212909`       | `214638` (`+1729`) |
+| `huff` (4-bit)  | `345836`       | `345836` (`+0`)    |
+| `huff` (8-bit)  | `316208`       | `316208` (`+0`)    |
+| `rl`            | `345406`       | `345406` (`+0`)    |
+| `lh`            | `158756`       | `166692` (`+7936`) |
 
-In the single file test, the output of nsmbw-compress is either identical to or smaller than the
+In the single-file test, the output of nsmbw-compress is either identical to or smaller than the
 output of ntcompress in every supported format, with the greatest savings exhibited in LH.
 
 ## Building

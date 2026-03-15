@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-static const nsmbw_compress_function compress_functions[][2] = {
+static const nsmbw_compress_function test_compress_functions[][2] = {
     [nsmbw_compress_type_lz] = {nsmbw_compress_lz_encode,
                                 nsmbw_compress_lz_decode},
     [nsmbw_compress_type_huff] = {nsmbw_compress_huff_encode,
@@ -21,7 +21,7 @@ static const nsmbw_compress_function compress_functions[][2] = {
                                  nsmbw_compress_szs_decode},
 };
 
-static const char *compression_type_names[] = {
+static const char *test_compression_type_names[] = {
     [nsmbw_compress_type_lz] = "lz",   [nsmbw_compress_type_huff] = "huff",
     [nsmbw_compress_type_rl] = "rl",   [nsmbw_compress_type_lh] = "lh",
     [nsmbw_compress_type_lrc] = "lrc", [nsmbw_compress_type_diff] = "diff",
@@ -36,10 +36,11 @@ static void *decompressed_data;
 
 static void run_compression_tests() {
   for (size_t i = 0;
-       i < sizeof(compress_functions) / sizeof(compress_functions[0]); ++i) {
-    const char *type_name = compression_type_names[i];
-    const nsmbw_compress_function encode_func = compress_functions[i][0];
-    const nsmbw_compress_function decode_func = compress_functions[i][1];
+       i < sizeof(test_compress_functions) / sizeof(test_compress_functions[0]);
+       ++i) {
+    const char *type_name = test_compression_type_names[i];
+    const nsmbw_compress_function encode_func = test_compress_functions[i][0];
+    const nsmbw_compress_function decode_func = test_compress_functions[i][1];
 
     if (encode_func == NULL || decode_func == NULL) {
       continue;
