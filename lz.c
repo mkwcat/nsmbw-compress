@@ -378,7 +378,7 @@ bool nsmbw_compress_lz_encode(
         continue;
       }
 
-      if (dst + 2 > dst_end) {
+      if (dst + 5 > dst_end) {
         nsmbw_compress_print_error("Output file is too much larger than the "
                                    "input file; aborting compression");
         free(work_buffer);
@@ -407,7 +407,6 @@ bool nsmbw_compress_lz_encode(
           for (int j = 0; j < 1 + (next_next_match_size > next_match_size);
                j++) {
             *dst++ = src[0 - ahead + j];
-            flags |= 1;
             if (++i >= 8) {
               *flags_ptr = flags;
               flags = i = 0;

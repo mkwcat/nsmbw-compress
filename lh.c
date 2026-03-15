@@ -296,7 +296,7 @@ static size_t lz_encode(const uint8_t *restrict src, uint8_t *restrict dst,
         continue;
       }
 
-      if (dst + 5 > dst_end) {
+      if (dst + 8 > dst_end) {
         nsmbw_compress_print_error("Output file is too much larger than the "
                                    "input file; aborting compression");
         return 0;
@@ -326,7 +326,6 @@ static size_t lz_encode(const uint8_t *restrict src, uint8_t *restrict dst,
             *dst++ = src[0 - ahead + j];
             nsmbw_compress_huff_count_byte(sym_table->nodes,
                                            src[0 - ahead + j]);
-            flags |= 1;
             if (++i >= 8) {
               *flags_ptr = flags;
               flags = i = 0;

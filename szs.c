@@ -161,7 +161,7 @@ bool nsmbw_compress_szs_encode(const uint8_t *src, uint8_t *dst,
         continue;
       }
 
-      if (dst + 3 > dst_end) {
+      if (dst + 6 > dst_end) {
         nsmbw_compress_print_error("Output file is too much larger than the "
                                    "input file; aborting compression");
         free(work_buffer);
@@ -216,13 +216,6 @@ bool nsmbw_compress_szs_encode(const uint8_t *src, uint8_t *dst,
 
       if (match_size >= 15 + 3) {
         match_size_byte = 0;
-      }
-
-      if (dst + 3 > dst_end) {
-        nsmbw_compress_print_error("Output file is too much larger than the "
-                                   "input file; aborting compression");
-        free(work_buffer);
-        return false;
       }
 
       *dst++ = (match_size_byte << 4) | (match_distance - 1) >> 8;
