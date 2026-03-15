@@ -423,16 +423,6 @@ bool nsmbw_compress_lz_encode(
     *flags_ptr = flags;
   }
 
-  // Pad to 4 bytes
-  while ((dst - dst_start) % 4 != 0) {
-    if (dst + 1 > dst_end) {
-      nsmbw_compress_print_error("Output file is too much larger than the "
-                                 "input file; aborting compression");
-      return false;
-    }
-    *dst++ = 0;
-  }
-
   free(work_buffer);
 
   *dst_length = dst - dst_start;

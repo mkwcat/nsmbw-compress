@@ -490,8 +490,7 @@ bool nsmbw_compress_lh_encode(const uint8_t *src, uint8_t *dst,
     }
   }
 
-  // Pad to 4 bytes
-  ncutil_bit_writer_pad(&bit_writer, sizeof(uint32_t));
+  ncutil_bit_writer_flush(&bit_writer);
 
   *dst_length = sizeof(uint32_t) + (src_length > 0x1000000) * sizeof(uint32_t) +
                 bit_writer.offset;

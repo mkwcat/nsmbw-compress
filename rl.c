@@ -1,5 +1,5 @@
-#include "nsmbw_compress.h"
 #include "ncutil.h"
+#include "nsmbw_compress.h"
 #include <assert.h>
 #include <errno.h>
 #include <stdlib.h>
@@ -119,8 +119,7 @@ bool nsmbw_compress_rl_encode(const uint8_t *src, uint8_t *dst,
   const uint8_t *src_end = src + src_length;
 
   if (src_length < 0x1000000) {
-    ncutil_write_le_u32(dst, 0,
-                        src_length << 8 | nsmbw_compress_cx_type_rl);
+    ncutil_write_le_u32(dst, 0, src_length << 8 | nsmbw_compress_cx_type_rl);
     dst += sizeof(uint32_t);
   } else {
     ncutil_write_le_u32(dst, 0, nsmbw_compress_cx_type_rl);
@@ -151,9 +150,8 @@ bool nsmbw_compress_rl_encode(const uint8_t *src, uint8_t *dst,
       *dst++ = byte;
     } else {
       // Run of literal bytes
-      run_length = 1;
       while (src < src_end && run_length < 0x7F + 1) {
-        if (src + 1 < src_end && *src == src[1] && *src == byte) {
+        if (src + 2 < src_end && *src == src[1] && *src == src[2]) {
           break;
         }
         run_length++;
@@ -169,16 +167,6 @@ bool nsmbw_compress_rl_encode(const uint8_t *src, uint8_t *dst,
       memcpy(dst, src - run_length, run_length);
       dst += run_length;
     }
-  }
-
-  // Pad to 4 bytes
-  while ((dst - dst_start) % 4 != 0) {
-    if (dst + 1 > dst_end) {
-      nsmbw_compress_print_error("Output file is too much larger than the "
-                                 "input file; aborting compression");
-      return false;
-    }
-    *dst++ = 0;
   }
 
   *dst_length = dst - dst_start;
