@@ -17,6 +17,7 @@ enum {
 static uint32_t lh_import_huff_tree(uint16_t *tree, const uint8_t *src,
                                     uint8_t huff_bit_size,
                                     uint32_t input_size) {
+  const uint8_t *const src_start = src;
   uint32_t table_size = *src++;
   if (huff_bit_size > 8) {
     table_size |= *src++ << 8;
@@ -27,13 +28,13 @@ static uint32_t lh_import_huff_tree(uint16_t *tree, const uint8_t *src,
     return table_size;
   }
 
-  const uint8_t *const src_end = src + table_size;
-  const uint32_t max_table_size = (1 << huff_bit_size) << 1;
+  const uint8_t *const src_end = src_start + table_size;
+  const uint32_t max_table_size = 1 << (huff_bit_size + 1);
   const uint16_t huff_bit_mask = (1 << huff_bit_size) - 1;
 
-  uint8_t bit_count = 0;
-  uint16_t value = 0;
-  uint16_t it = 1;
+  int bit_count = 0;
+  uint32_t value = 0;
+  uint32_t it = 1;
   while (src < src_end) {
     while (bit_count < huff_bit_size) {
       value <<= 8;

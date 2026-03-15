@@ -13,46 +13,48 @@ static const huff_size_t huff_invalid_node = nsmbw_compress_huff_invalid_node;
 bool nsmbw_compress_huff_verify_table(const uint16_t *table,
                                       uint8_t huff_bit_size,
                                       uint8_t flags_bit_offset) {
-  const uint16_t table_size = *table;
+  assert(ncutil_is_aligned_ptr(sizeof(uint32_t), table));
+
+  const uint16_t table_size = *table++;
 
   if (table_size > 1 << (huff_bit_size + 1)) {
     return false;
   }
+  const uint16_t *const end = table + table_size - 1;
 
-  const uint16_t *const start = table + 1;
-  const uint16_t *const end = table + table_size;
-
-  uint8_t e[sizeof(uint16_t) * 0x40] = {};
+  uint8_t leaf_flags[sizeof(uint16_t) * 0x40] = {};
 
   const uint16_t left_leaf_flag = 1 << (flags_bit_offset - 1);
   const uint16_t right_leaf_flag = 1 << (flags_bit_offset - 2);
   const uint16_t leaf_flags_mask = left_leaf_flag | right_leaf_flag;
+  const uint16_t sym_mask = right_leaf_flag - 1;
 
-  uint16_t i = 1;
-  for (table = start; table < end; i++, table++) {
-    if (e[i / 8] & (1 << (i % 8))) {
+  for (uint16_t i = 1; table < end; i++, table++) {
+    if (leaf_flags[i / 8] & (1 << (i % 8))) {
       continue;
     }
-
-    int g = ((*table & ~leaf_flags_mask) + 1) << 1;
-    size_t h = ((size_t)table >> 1 << 1) + g;
 
     if (*table == 0 && i >= table_size - 4) {
       continue;
     }
 
-    if ((size_t)h >= (size_t)end) {
+    uint32_t tree_size = ((*table & sym_mask) + 1) << 1;
+    const uint16_t *tree_end =
+        ((const uint16_t *)ncutil_align_down_ptr(sizeof(uint32_t), table)) +
+        tree_size;
+
+    if (tree_end >= end) {
       return false;
     }
 
     if (*table & left_leaf_flag) {
-      unsigned j = (i & ~1) + g;
-      e[j / 8] |= (uint8_t)(1 << (j % 8));
+      uint32_t value = (i & ~1) + tree_size;
+      leaf_flags[value / 8] |= 1 << (value % 8);
     }
 
     if (*table & right_leaf_flag) {
-      unsigned k = (i & ~1) + g + 1;
-      e[k / 8] |= (uint8_t)(1 << (k % 8));
+      uint32_t value = (i & ~1) + tree_size + 1;
+      leaf_flags[value / 8] |= 1 << (value % 8);
     }
   }
 

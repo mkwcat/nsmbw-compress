@@ -119,6 +119,14 @@ static inline const void *ncutil_align_down_ptr(int alignment,
   return (const void *)((uintptr_t)value & ~(alignment - 1));
 }
 
+static inline bool ncutil_is_aligned(int alignment, size_t value) {
+  return (value & (alignment - 1)) == 0;
+}
+
+static inline bool ncutil_is_aligned_ptr(int alignment, const void *value) {
+  return ((uintptr_t)value & (alignment - 1)) == 0;
+}
+
 struct ncutil_bit_writer {
   uint8_t *data;
   uint32_t offset;
