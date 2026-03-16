@@ -20,7 +20,7 @@ struct nsmbw_compress_lz_context {
   // The maximum window size
   nsmbw_compress_lz_size_t max_window_size;
   // Total number of bytes that have been slid so far
-  size_t slide_total;
+  uint32_t slide_total;
   // The next window offset for the byte value, indexed by the current window
   // offset
   nsmbw_compress_lz_size_t *skip_table_next;
@@ -34,6 +34,12 @@ struct nsmbw_compress_lz_context {
   nsmbw_compress_lz_size_t *skip_table_head;
   // The tail of the skip table, indexed by the byte value
   nsmbw_compress_lz_size_t *skip_table_tail;
+
+  // Hack: Fake match size and distance for a pre-calculated search
+  uint32_t fake_match_size;
+  uint32_t fake_match_distance;
+  uint32_t fake_match_slide;
+  uint32_t fake_match_slide_to;
 };
 
 size_t nsmbw_compress_lz_get_work_size(nsmbw_compress_lz_size_t window_size,
