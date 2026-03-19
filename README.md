@@ -36,21 +36,35 @@ Supported types for decompression:
 
 ## Comparisons
 
-Here is a comparison between compressed sizes of nsmbw-compress and the internal `ntcompress`
-tool used by Nintendo. The file used here is `Kinopio.arc` from New Super Mario Bros. Wii,
-which has an uncompressed size of `381536` bytes. The following table compares the size in bytes
-of the output of each format:
-| Format          | nsmbw-compress | ntcompress         |
-| --------------- | -------------- | ------------------ |
-| `lz`            | `205549`       | `207455` (`+1906`) |
-| `lz` (old-lz11) | `212909`       | `214638` (`+1729`) |
-| `huff` (4-bit)  | `345836`       | `345836` (`+0`)    |
-| `huff` (8-bit)  | `316208`       | `316208` (`+0`)    |
-| `rl`            | `345406`       | `345406` (`+0`)    |
-| `lh`            | `158756`       | `166692` (`+7936`) |
+Here is a comparison between compressed sizes of nsmbw-compress, the internal `ntcompress`
+tool used by Nintendo, and Cue's Nintendo DS/GBA Compressors for LZ specifically.
 
-In the single-file test, the output of nsmbw-compress is either identical to or smaller than the
-output of ntcompress in every supported format, with the greatest savings exhibited in LH.
+The file used here is `Kinopio.arc` from New Super Mario Bros. Wii, which has an
+uncompressed size of `381536` bytes. The following table compares the size in bytes
+of the output of each format:
+| Format          | nsmbw-compress | ntcompress         | Cue (lzx)          |
+| --------------- | -------------- | ------------------ | ------------------ |
+| `lz`            | `205415`       | `207455` (`+2040`) | `207177` (`+1762`) |
+| `lz` (old-lz11) | `212769`       | `214638` (`+1869`) | N/A                |
+| `huff` (4-bit)  | `345836`       | `345836` (`+0`)    | N/A                |
+| `huff` (8-bit)  | `316208`       | `316208` (`+0`)    | N/A                |
+| `rl`            | `345406`       | `345406` (`+0`)    | N/A                |
+| `lh`            | `158713`       | `166692` (`+7979`) | N/A                |
+
+In the single-file test, the output of nsmbw-compress is either identical to or smaller
+than the output of ntcompress in every supported format, with the greatest savings
+exhibited in LH.
+
+The following table compares the `szs` format specifically, which was not supported
+by ntcompress, between nsmbw-compress and [Wiimm's SZS Tool (wszst)](https://szs.wiimm.de/wszst/).
+| Format          | nsmbw-compress | wszst `--compr 10`  | wszst `--compr 120` |
+| --------------- | -------------- | ----------------- | ----------------- |
+| `szs`           | `205480`       | `205620` (`+140`) | `205344` (`-136`) |
+
+Wiimm's tool overtakes nsmbw-compress by a fair margin when using the time-consuming
+backtracking option (specifically `--compr 120` in this test). I don't intend to create
+my own full backtracking alternative, so wszst is still preferred if you need the best
+possible compression.
 
 ## Building
 
