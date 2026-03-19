@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 static const char *executable_name = "nsmbw-compress";
 
@@ -690,11 +691,28 @@ static int main_compress(const void *input_file, size_t input_file_size,
               : 8,
   };
 
+  clock_t start_time, end_time;
+
+  if (argument_specified[argument_index_verbose]) {
+    start_time = clock();
+    nsmbw_compress_print_verbose("Begin compression...");
+  }
+
   bool ok = compress_functions[compression_type][0](
       input_file, compressed_data, input_file_size, &dst_length, &params);
   if (!ok) {
     nsmbw_compress_print_error("Output file not written due to errors");
     return EXIT_FAILURE;
+  }
+
+  if (argument_specified[argument_index_verbose]) {
+    end_time = clock();
+    double elapsed_seconds =
+        ncutil_static_cast(double, end_time - start_time) / CLOCKS_PER_SEC;
+    nsmbw_compress_print_verbose(
+        "Compression completed in %.6f seconds with size %zu bytes (%.2f%%)",
+        elapsed_seconds, dst_length,
+       ncutil_static_cast(double, dst_length) / input_file_size * 100);
   }
 
   *output_data = compressed_data;

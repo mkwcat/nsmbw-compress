@@ -310,12 +310,8 @@ bool nsmbw_compress_lz_search_ahead(struct nsmbw_compress_lz_context *context,
     *src += 2;
     next_next_match_size = nsmbw_compress_lz_search_window(
         context, *src, src_end - *src, &next_next_match_distance,
-        max_match_size);
+        next_match_size + 1);
     if (next_next_match_size > next_match_size) {
-      // Ignore the better match from before
-      if (in_match_size > next_match_size) {
-        *match_size = next_match_size;
-      }
       *src +=
           nsmbw_compress_lz_slide_to(context, *src, slide_base + *match_size);
       return false;
