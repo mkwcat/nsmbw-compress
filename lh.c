@@ -304,20 +304,19 @@ static size_t lz_encode(const uint8_t *restrict src, uint8_t *restrict dst,
       }
 
       const uint8_t *const literal_ptr = src;
-      int literal_count = nsmbw_compress_lz_search_ahead(
+      const bool pad = nsmbw_compress_lz_search_ahead(
           &context, ncutil_restrict_cast(const uint8_t **, &src), src_end,
           max_match_size, &match_size, &match_distance);
-      for (int j = 0; j < literal_count; j++) {
-        *dst++ = literal_ptr[j];
-        nsmbw_compress_huff_count_byte(sym_table->nodes, literal_ptr[j]);
+      if (pad) {
+        *dst++ = *literal_ptr;
         if (++i >= 8) {
           *flags_ptr = flags;
           flags = i = 0;
           flags_ptr = dst++;
         }
         flags <<= 1;
+        nsmbw_compress_huff_count_byte(sym_table->nodes, *literal_ptr);
       }
-
       // Encoded reference
       flags |= 1;
 

@@ -268,11 +268,11 @@ nsmbw_compress_lz_search_window(const struct nsmbw_compress_lz_context *context,
   return best_match_size;
 }
 
-int nsmbw_compress_lz_search_ahead(struct nsmbw_compress_lz_context *context,
-                                   const uint8_t **src, const uint8_t *src_end,
-                                   uint32_t max_match_size,
-                                   uint32_t *restrict match_size,
-                                   uint32_t *restrict match_distance) {
+bool nsmbw_compress_lz_search_ahead(struct nsmbw_compress_lz_context *context,
+                                    const uint8_t **src, const uint8_t *src_end,
+                                    uint32_t max_match_size,
+                                    uint32_t *restrict match_size,
+                                    uint32_t *restrict match_distance) {
   if (context->fake_match_size) {
     assert(context->slide_total == context->fake_match_slide);
     *match_size = context->fake_match_size;
@@ -280,13 +280,13 @@ int nsmbw_compress_lz_search_ahead(struct nsmbw_compress_lz_context *context,
     *src +=
         nsmbw_compress_lz_slide_to(context, *src, context->fake_match_slide_to);
     context->fake_match_size = 0;
-    return 0;
+    return false;
   }
 
   if (*match_size == max_match_size) {
     nsmbw_compress_lz_slide(context, *src, max_match_size);
     *src += max_match_size;
-    return 0;
+    return false;
   }
 
   uint32_t slide_base = context->slide_total;
@@ -302,25 +302,24 @@ int nsmbw_compress_lz_search_ahead(struct nsmbw_compress_lz_context *context,
   if (next_match_size <= in_match_size) {
     nsmbw_compress_lz_slide(context, *src, in_match_size - 1);
     *src += in_match_size - 1;
-    return 0;
+    return false;
   }
 
   if (next_match_size < max_match_size) {
-    nsmbw_compress_lz_slide(context, (*src)++, 1);
+    nsmbw_compress_lz_slide(context, *src, 2);
+    *src += 2;
     next_next_match_size = nsmbw_compress_lz_search_window(
         context, *src, src_end - *src, &next_next_match_distance,
         max_match_size);
-  }
-
-  int literal_count;
-  if (next_next_match_size > next_match_size + 1) {
-    *match_size = next_next_match_size;
-    *match_distance = next_next_match_distance;
-    literal_count = 2;
-  } else {
-    *match_size = next_match_size;
-    *match_distance = next_match_distance;
-    literal_count = 1;
+    if (next_next_match_size > next_match_size) {
+      // Ignore the better match from before
+      if (in_match_size > next_match_size) {
+        *match_size = next_match_size;
+      }
+      *src +=
+          nsmbw_compress_lz_slide_to(context, *src, slide_base + *match_size);
+      return false;
+    }
   }
 
   // One last search: It's possible for our match size gains to be completely
@@ -331,23 +330,25 @@ int nsmbw_compress_lz_search_ahead(struct nsmbw_compress_lz_context *context,
   uint32_t next_match_size2 = nsmbw_compress_lz_search_window(
       context, *src, src_end - *src, &next_match_distance2, max_match_size);
   *src += nsmbw_compress_lz_slide_to(context, *src,
-                                     slide_base + literal_count + *match_size);
+                                     slide_base + 1 + next_match_size);
 
-  if (in_match_size + next_match_size2 < *match_size) {
-    return literal_count;
+  if (in_match_size + next_match_size2 < next_match_size) {
+    *match_size = next_match_size;
+    *match_distance = next_match_distance;
+    return true;
   }
   // Okay, well, two last searches so we can compare the two
   uint32_t next_match_distance3;
   uint32_t next_match_size3 = nsmbw_compress_lz_search_window(
       context, *src, src_end - *src, &next_match_distance3, max_match_size);
   if (in_match_size + next_match_size2 <
-      in_match_size + *match_size + next_match_size3) {
-    return literal_count;
+      in_match_size + next_match_size + next_match_size3) {
+    *match_size = next_match_size;
+    *match_distance = next_match_distance;
+    return true;
   }
 
   // The change is not worth it, revert back to the original match
-  *match_size = in_match_size;
-  *match_distance = in_match_distance;
   // This is a HACK!!! We already slid the next match size and we
   // can't slide back!!! But we know we haven't slid past it yet, so we
   // can just store the match we need and rely on the caller to call us in
@@ -356,7 +357,7 @@ int nsmbw_compress_lz_search_ahead(struct nsmbw_compress_lz_context *context,
   context->fake_match_distance = next_match_distance2;
   context->fake_match_slide = context->slide_total;
   context->fake_match_slide_to = slide_base + in_match_size + next_match_size2;
-  return 0;
+  return false;
 }
 
 void nsmbw_compress_lz_slide(struct nsmbw_compress_lz_context *context,
@@ -494,11 +495,11 @@ bool nsmbw_compress_lz_encode(
       }
 
       const uint8_t *const literal_ptr = src;
-      int literal_count = nsmbw_compress_lz_search_ahead(
+      const bool pad = nsmbw_compress_lz_search_ahead(
           &context, ncutil_restrict_cast(const uint8_t **, &src), src_end,
           max_match_size, &match_size, &match_distance);
-      for (int j = 0; j < literal_count; j++) {
-        *dst++ = literal_ptr[j];
+      if (pad) {
+        *dst++ = *literal_ptr;
         if (++i >= 8) {
           *flags_ptr = flags;
           flags = i = 0;

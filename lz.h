@@ -54,11 +54,11 @@ uint32_t nsmbw_compress_lz_search_window(
     const struct nsmbw_compress_lz_context *context, const uint8_t *data,
     uint32_t data_size, uint32_t *match_distance, uint32_t max_match_size);
 
-int nsmbw_compress_lz_search_ahead(struct nsmbw_compress_lz_context *context,
-                                   const uint8_t **src, const uint8_t *src_end,
-                                   uint32_t max_match_size,
-                                   uint32_t *match_size,
-                                   uint32_t *match_distance);
+bool nsmbw_compress_lz_search_ahead(struct nsmbw_compress_lz_context *context,
+                                    const uint8_t **src, const uint8_t *src_end,
+                                    uint32_t max_match_size,
+                                    uint32_t *match_size,
+                                    uint32_t *match_distance);
 
 void nsmbw_compress_lz_slide(struct nsmbw_compress_lz_context *context,
                              const uint8_t *data, uint32_t length);
