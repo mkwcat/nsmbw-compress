@@ -31,20 +31,21 @@ static const nsmbw_compress_function compress_functions[][2] = {
                                   nsmbw_compress_diff_decode},
     [nsmbw_compress_type_szs] = {nsmbw_compress_szs_encode,
                                  nsmbw_compress_szs_decode},
+    [nsmbw_compress_type_ash] = {NULL, nsmbw_compress_ash_decode},
 };
 
 static const char *compression_type_names[] = {
     [nsmbw_compress_type_lz] = "lz",   [nsmbw_compress_type_huff] = "huff",
     [nsmbw_compress_type_rl] = "rl",   [nsmbw_compress_type_lh] = "lh",
     [nsmbw_compress_type_lrc] = "lrc", [nsmbw_compress_type_diff] = "diff",
-    [nsmbw_compress_type_szs] = "szs",
+    [nsmbw_compress_type_szs] = "szs", [nsmbw_compress_type_ash] = "ash",
 };
 
 static const char *compression_default_extensions[] = {
     [nsmbw_compress_type_lz] = ".LZ",   [nsmbw_compress_type_huff] = ".HUFF",
     [nsmbw_compress_type_rl] = ".RL",   [nsmbw_compress_type_lh] = ".LH",
     [nsmbw_compress_type_lrc] = ".LRC", [nsmbw_compress_type_diff] = ".DIFF",
-    [nsmbw_compress_type_szs] = ".szs",
+    [nsmbw_compress_type_szs] = ".szs", [nsmbw_compress_type_ash] = ".ash",
 };
 
 struct nsmbw_compress_argument {
@@ -419,6 +420,20 @@ static bool get_uncompress_info(const void *input_data, size_t input_size,
     return true;
   }
 
+  // Check for "ASH0"
+  static const uint32_t ash_magic =
+      'A' | ('S' << 8) | ('H' << 16) | ('0' << 24);
+  if (header == ash_magic) {
+    *compression_type = nsmbw_compress_type_ash;
+    if (input_size < 8) {
+      nsmbw_compress_print_error(
+          "Input file is too small to be a valid ASH file");
+      return false;
+    }
+    *expanded_size = ncutil_read_le_u32(input_data, 4) & 0x00FFFFFFu;
+    return true;
+  }
+
   enum nsmbw_compress_cx_type cx_type = header & nsmbw_compress_cx_type_mask;
   uint8_t cx_option = header & 0x0F;
   switch (cx_type) {
@@ -712,7 +727,7 @@ static int main_compress(const void *input_file, size_t input_file_size,
     nsmbw_compress_print_verbose(
         "Compression completed in %.6f seconds with size %zu bytes (%.2f%%)",
         elapsed_seconds, dst_length,
-       ncutil_static_cast(double, dst_length) / input_file_size * 100);
+        ncutil_static_cast(double, dst_length) / input_file_size * 100);
   }
 
   *output_data = compressed_data;
