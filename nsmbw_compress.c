@@ -631,17 +631,21 @@ static int main_uncompress(const void *input_file, size_t input_file_size,
     nsmbw_compress_print_warning(
         "--type has no effect when --uncomp is specified");
   }
+  if (argument_specified[argument_index_lz_mode]) {
+    nsmbw_compress_print_warning(
+        "--lz-mode has no effect when --uncomp is specified");
+  }
   if (argument_specified[argument_index_huff_size]) {
     nsmbw_compress_print_warning(
         "--huff-size has no effect when --uncomp is specified");
   }
+  if (argument_specified[argument_index_asr_mode]) {
+    nsmbw_compress_print_warning(
+        "--asr-mode has no effect when --uncomp is specified");
+  }
   if (argument_specified[argument_index_diff_size]) {
     nsmbw_compress_print_warning(
         "--diff-size has no effect when --uncomp is specified");
-  }
-  if (argument_specified[argument_index_lz_mode]) {
-    nsmbw_compress_print_warning(
-        "--lz-mode has no effect when --uncomp is specified");
   }
 
   size_t expanded_size;
@@ -769,6 +773,12 @@ static int main_compress(const void *input_file, size_t input_file_size,
       compression_type != nsmbw_compress_type_huff) {
     nsmbw_compress_print_warning(
         "--huff-size has no effect for compression type %s",
+        compression_type_names[compression_type]);
+  }
+  if (argument_specified[argument_index_asr_mode] &&
+      compression_type != nsmbw_compress_type_asr) {
+    nsmbw_compress_print_warning(
+        "--asr-mode has no effect for compression type %s",
         compression_type_names[compression_type]);
   }
   if (argument_specified[argument_index_diff_size] &&
