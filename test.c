@@ -19,15 +19,18 @@ static const nsmbw_compress_function test_compress_functions[][2] = {
                                   nsmbw_compress_diff_decode},
     [nsmbw_compress_type_szs] = {nsmbw_compress_szs_encode,
                                  nsmbw_compress_szs_decode},
+    [nsmbw_compress_type_ash] = {NULL, nsmbw_compress_ash_decode},
+    [nsmbw_compress_type_asr] = {nsmbw_compress_asr_encode,
+                                 nsmbw_compress_asr_decode},
 };
 
 static const char *test_compression_type_names[] = {
     [nsmbw_compress_type_lz] = "lz",   [nsmbw_compress_type_huff] = "huff",
     [nsmbw_compress_type_rl] = "rl",   [nsmbw_compress_type_lh] = "lh",
     [nsmbw_compress_type_lrc] = "lrc", [nsmbw_compress_type_diff] = "diff",
-    [nsmbw_compress_type_szs] = "szs",
+    [nsmbw_compress_type_szs] = "szs", [nsmbw_compress_type_ash] = "ash",
+    [nsmbw_compress_type_asr] = "asr",
 };
-
 #define BUFFER_SIZE 0x1001
 
 static void *generated_uncompressed_data;

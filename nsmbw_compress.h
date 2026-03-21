@@ -37,10 +37,17 @@ enum nsmbw_compress_lz_mode {
   nsmbw_compress_lz_mode_auto = 2,
 };
 
+enum nsmbw_compress_asr_mode {
+  nsmbw_compress_asr_mode_0 = 0,
+  nsmbw_compress_asr_mode_1 = 1,
+  nsmbw_compress_asr_mode_auto = 2,
+};
+
 struct nsmbw_compress_parameters {
   enum nsmbw_compress_lz_mode lz_mode;
   uint8_t huff_bit_size;
   uint8_t filter_diff_size;
+  enum nsmbw_compress_asr_mode asr_mode;
 };
 
 typedef bool (*nsmbw_compress_function)(
@@ -114,6 +121,11 @@ nsmbw_compress_szs_decode(const uint8_t *src, uint8_t *dst, size_t src_length,
 
 extern bool
 nsmbw_compress_ash_decode(const uint8_t *src, uint8_t *dst, size_t src_length,
+                          size_t *dst_length,
+                          const struct nsmbw_compress_parameters *params);
+
+extern bool
+nsmbw_compress_asr_encode(const uint8_t *src, uint8_t *dst, size_t src_length,
                           size_t *dst_length,
                           const struct nsmbw_compress_parameters *params);
 

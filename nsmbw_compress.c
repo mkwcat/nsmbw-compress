@@ -32,7 +32,8 @@ static const nsmbw_compress_function compress_functions[][2] = {
     [nsmbw_compress_type_szs] = {nsmbw_compress_szs_encode,
                                  nsmbw_compress_szs_decode},
     [nsmbw_compress_type_ash] = {NULL, nsmbw_compress_ash_decode},
-    [nsmbw_compress_type_asr] = {NULL, nsmbw_compress_asr_decode},
+    [nsmbw_compress_type_asr] = {nsmbw_compress_asr_encode,
+                                 nsmbw_compress_asr_decode},
 };
 
 static const char *compression_type_names[] = {

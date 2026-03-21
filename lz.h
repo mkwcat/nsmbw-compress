@@ -66,6 +66,12 @@ void nsmbw_compress_lz_slide(struct nsmbw_compress_lz_context *context,
 size_t nsmbw_compress_lz_slide_to(struct nsmbw_compress_lz_context *context,
                                   const uint8_t *data, size_t target_offset);
 
+bool nsmbw_compress_lz_encode_portable(
+    const uint8_t *src, size_t src_length, uint16_t max_match_size,
+    uint16_t window_size, bool reverse_skip_table, uint16_t sym_match_bit,
+    uint16_t **dst_sym_buffer, size_t *sym_count, uint16_t **dst_off_buffer,
+    size_t *off_count);
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

@@ -4,6 +4,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <limits.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -417,6 +418,77 @@ size_t nsmbw_compress_lz_slide_to(struct nsmbw_compress_lz_context *context,
   size_t count = target_offset - context->slide_total;
   nsmbw_compress_lz_slide(context, data, count);
   return count;
+}
+
+bool nsmbw_compress_lz_encode_portable(
+    const uint8_t *src, size_t src_length, uint16_t max_match_size,
+    uint16_t window_size, bool reverse_skip_table, uint16_t sym_match_bit,
+    uint16_t **dst_sym_buffer, size_t *sym_count, uint16_t **dst_off_buffer,
+    size_t *off_count) {
+  void *work_buffer =
+      malloc(nsmbw_compress_lz_get_work_size(window_size, reverse_skip_table));
+  if (work_buffer == NULL) {
+    nsmbw_compress_print_error(
+        "Failed to allocate memory for LZ compression work buffer: %s",
+        strerror(errno));
+    return false;
+  }
+
+  // Sizes are worst case scenario
+  uint16_t *sym_buffer = (uint16_t *)malloc(src_length * sizeof(uint16_t));
+  uint16_t *off_buffer =
+      (uint16_t *)malloc((src_length / 3) * sizeof(uint16_t));
+  if (sym_buffer == NULL || off_buffer == NULL) {
+    nsmbw_compress_print_error(
+        "Failed to allocate memory for LZ compression symbol or offset buffer: "
+        "%s",
+        strerror(errno));
+    free(work_buffer);
+    free(sym_buffer);
+    free(off_buffer);
+    return false;
+  }
+
+  const uint8_t *src_end = src + src_length;
+
+  struct nsmbw_compress_lz_context context;
+  nsmbw_compress_lz_init_context(&context, work_buffer, window_size,
+                                 reverse_skip_table);
+
+  size_t sym_index = 0, off_index = 0;
+
+  while (src < src_end) {
+    uint32_t match_distance;
+    uint32_t match_size = nsmbw_compress_lz_search_window(
+        &context, src, src_end - src, &match_distance, max_match_size);
+    if (!match_size) {
+      // Literal byte
+      nsmbw_compress_lz_slide(&context, src, 1);
+      sym_buffer[sym_index++] = *src++;
+      continue;
+    }
+
+    const uint8_t *const literal_ptr = src;
+    const bool pad = nsmbw_compress_lz_search_ahead(
+        &context, ncutil_restrict_cast(const uint8_t **, &src), src_end,
+        max_match_size, &match_size, &match_distance);
+    if (pad) {
+      // Pad the reference with a literal byte
+      sym_buffer[sym_index++] = *literal_ptr;
+    }
+
+    // Encoded reference
+    sym_buffer[sym_index++] = (match_size - 3) | sym_match_bit;
+    off_buffer[off_index++] = match_distance - 1;
+  }
+
+  *sym_count = sym_index;
+  *dst_sym_buffer = sym_buffer;
+  *off_count = off_index;
+  *dst_off_buffer = off_buffer;
+
+  free(work_buffer);
+  return true;
 }
 
 static bool lz_encode_mode(const uint8_t *restrict src, uint8_t *restrict dst,
