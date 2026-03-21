@@ -1,4 +1,3 @@
-#include "lz.h"
 #include "ncutil.h"
 #include "nsmbw_compress.h"
 #include <assert.h>

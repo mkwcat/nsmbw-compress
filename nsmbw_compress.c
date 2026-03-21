@@ -32,6 +32,7 @@ static const nsmbw_compress_function compress_functions[][2] = {
     [nsmbw_compress_type_szs] = {nsmbw_compress_szs_encode,
                                  nsmbw_compress_szs_decode},
     [nsmbw_compress_type_ash] = {NULL, nsmbw_compress_ash_decode},
+    [nsmbw_compress_type_asr] = {NULL, nsmbw_compress_asr_decode},
 };
 
 static const char *compression_type_names[] = {
@@ -39,6 +40,7 @@ static const char *compression_type_names[] = {
     [nsmbw_compress_type_rl] = "rl",   [nsmbw_compress_type_lh] = "lh",
     [nsmbw_compress_type_lrc] = "lrc", [nsmbw_compress_type_diff] = "diff",
     [nsmbw_compress_type_szs] = "szs", [nsmbw_compress_type_ash] = "ash",
+    [nsmbw_compress_type_asr] = "asr",
 };
 
 static const char *compression_default_extensions[] = {
@@ -46,6 +48,7 @@ static const char *compression_default_extensions[] = {
     [nsmbw_compress_type_rl] = ".RL",   [nsmbw_compress_type_lh] = ".LH",
     [nsmbw_compress_type_lrc] = ".LRC", [nsmbw_compress_type_diff] = ".DIFF",
     [nsmbw_compress_type_szs] = ".szs", [nsmbw_compress_type_ash] = ".ash",
+    [nsmbw_compress_type_asr] = ".asr",
 };
 
 struct nsmbw_compress_argument {
@@ -129,7 +132,7 @@ static const struct nsmbw_compress_argument arguments[] = {
         .short_name = 'd',
         .long_name = "diffsize",
         .long_name_length = sizeof("diffsize") - 1,
-        .description = "Specify the size for filter-diff compression (8 or 16, "
+        .description = "Specify the size for filter-diff encoding (8 or 16, "
                        "default: 8)",
         .type = nsmbw_compress_argument_type_int,
         .index = 6,
@@ -198,6 +201,10 @@ static enum nsmbw_compress_type compress_type_from_str(const char *str) {
     return nsmbw_compress_type_diff;
   } else if (strcmp(str, "szs") == 0) {
     return nsmbw_compress_type_szs;
+  } else if (strcmp(str, "ash") == 0) {
+    return nsmbw_compress_type_ash;
+  } else if (strcmp(str, "asr") == 0) {
+    return nsmbw_compress_type_asr;
   } else {
     return -1; // Invalid type
   }
@@ -430,7 +437,27 @@ static bool get_uncompress_info(const void *input_data, size_t input_size,
           "Input file is too small to be a valid ASH file");
       return false;
     }
-    *expanded_size = ncutil_read_le_u32(input_data, 4) & 0x00FFFFFFu;
+    *expanded_size = ncutil_read_be_u32(input_data, 4) & 0x00FFFFFFu;
+    return true;
+  }
+
+  // Check for "ASR0"
+  static const uint32_t asr_magic =
+      'A' | ('S' << 8) | ('R' << 16) | ('0' << 24);
+  if (header == asr_magic) {
+    *compression_type = nsmbw_compress_type_asr;
+    if (input_size < 8) {
+      nsmbw_compress_print_error(
+          "Input file is too small to be a valid ASR file");
+      return false;
+    }
+    uint32_t header2 = ncutil_read_be_u32(input_data, 4);
+    if (header2 >> 24 != 0x00 && header2 >> 24 != 0x80) {
+      nsmbw_compress_print_error("Input file has unrecognized ASR mode: %02x",
+                                 header2 >> 24);
+      return false;
+    }
+    *expanded_size = header2 & 0x00FFFFFFu;
     return true;
   }
 

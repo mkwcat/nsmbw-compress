@@ -11,5 +11,7 @@ add_executable(nsmbw-compress
   lrc.c
   filter_diff.c
   szs.c
+  ash.c
+  asr.c
   test.c
 )

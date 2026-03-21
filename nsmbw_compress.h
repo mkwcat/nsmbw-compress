@@ -17,6 +17,7 @@ enum nsmbw_compress_type {
   nsmbw_compress_type_diff,
   nsmbw_compress_type_szs,
   nsmbw_compress_type_ash,
+  nsmbw_compress_type_asr,
 };
 
 enum nsmbw_compress_cx_type {
@@ -107,6 +108,11 @@ nsmbw_compress_szs_decode(const uint8_t *src, uint8_t *dst, size_t src_length,
 
 extern bool
 nsmbw_compress_ash_decode(const uint8_t *src, uint8_t *dst, size_t src_length,
+                          size_t *dst_length,
+                          const struct nsmbw_compress_parameters *params);
+
+extern bool
+nsmbw_compress_asr_decode(const uint8_t *src, uint8_t *dst, size_t src_length,
                           size_t *dst_length,
                           const struct nsmbw_compress_parameters *params);
 
