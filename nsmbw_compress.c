@@ -110,33 +110,38 @@ static const struct nsmbw_compress_argument arguments[] = {
 #define argument_index_uncomp 3
     },
     {
-        .short_name = 'b',
-        .long_name = "bitsize",
-        .long_name_length = sizeof("bitsize") - 1,
-        .description =
-            "Specify the bit size for Huffman compression (4 or 8, default: 8)",
-        .type = nsmbw_compress_argument_type_int,
+        .short_name = 'l',
+        .long_name = "lz-mode",
+        .long_name_length = sizeof("lz-mode") - 1,
+        .description = "<0, 1*, auto> Specify the LZ compression mode. Select "
+                       "mode 1 for better efficiency in 99% of cases, or auto "
+                       "to compress in both modes and choose the smaller "
+                       "output. Mode 0 might be more compatible with older "
+                       "games, but this is unlikely to ever be relevant.",
+        .type = nsmbw_compress_argument_type_string,
         .index = 4,
-#define argument_index_bitsize 4
+#define argument_index_lz_mode 4
     },
     {
-        .short_name = 'l',
-        .long_name = "old-lz11",
-        .long_name_length = sizeof("old-lz11") - 1,
-        .description = "Use the older low-efficiency mode of LZ11",
-        .type = nsmbw_compress_argument_type_bool,
+        .short_name = 'b',
+        .long_name = "huff-size",
+        .long_name_length = sizeof("huff-size") - 1,
+        .description = "<4, 8, auto*> Specify the bit size for Huffman "
+                       "compression, or compress both and automatically choose "
+                       "the smaller one.",
+        .type = nsmbw_compress_argument_type_string,
         .index = 5,
-#define argument_index_old_lz11 5
+#define argument_index_huff_size 5
     },
     {
         .short_name = 'd',
-        .long_name = "diffsize",
-        .long_name_length = sizeof("diffsize") - 1,
-        .description = "Specify the size for filter-diff encoding (8 or 16, "
-                       "default: 8)",
+        .long_name = "diff-size",
+        .long_name_length = sizeof("diff-size") - 1,
+        .description =
+            "<4, 8*> Specify the element size for filter-diff encoding.",
         .type = nsmbw_compress_argument_type_int,
         .index = 6,
-#define argument_index_diffsize 6
+#define argument_index_diff_size 6
     },
     {
         .short_name = '\0',
@@ -207,6 +212,44 @@ static enum nsmbw_compress_type compress_type_from_str(const char *str) {
     return nsmbw_compress_type_asr;
   } else {
     return -1; // Invalid type
+  }
+}
+
+static enum nsmbw_compress_lz_mode get_lz_mode() {
+  if (argument_specified[argument_index_lz_mode]) {
+    const char *str = argument_values[argument_index_lz_mode].string_value;
+    if (strcmp(str, "0") == 0) {
+      return nsmbw_compress_lz_mode_0;
+    } else if (strcmp(str, "1") == 0) {
+      return nsmbw_compress_lz_mode_1;
+    } else if (strcmp(str, "auto") == 0) {
+      return nsmbw_compress_lz_mode_auto;
+    } else {
+      nsmbw_compress_print_error("Invalid LZ mode: %s. Use 0, 1, or auto.",
+                                 str);
+      exit(EXIT_FAILURE);
+    }
+  } else {
+    return nsmbw_compress_lz_mode_1; // Default to mode 1
+  }
+}
+
+static uint8_t get_huff_bit_size() {
+  if (argument_specified[argument_index_huff_size]) {
+    const char *str = argument_values[argument_index_huff_size].string_value;
+    if (strcmp(str, "4") == 0) {
+      return 4;
+    } else if (strcmp(str, "8") == 0) {
+      return 8;
+    } else if (strcmp(str, "auto") == 0) {
+      return 0; // Zero indicates auto mode
+    } else {
+      nsmbw_compress_print_error(
+          "Invalid Huffman bit size: %s. Use 4, 8, or auto.", str);
+      exit(EXIT_FAILURE);
+    }
+  } else {
+    return 0; // Default to auto
   }
 }
 
@@ -557,13 +600,17 @@ static int main_uncompress(const void *input_file, size_t input_file_size,
     nsmbw_compress_print_warning(
         "--type has no effect when --uncomp is specified");
   }
-  if (argument_specified[argument_index_bitsize]) {
+  if (argument_specified[argument_index_huff_size]) {
     nsmbw_compress_print_warning(
-        "--bitsize has no effect when --uncomp is specified");
+        "--huff-size has no effect when --uncomp is specified");
   }
-  if (argument_specified[argument_index_old_lz11]) {
+  if (argument_specified[argument_index_diff_size]) {
     nsmbw_compress_print_warning(
-        "--old-lz11 has no effect when --uncomp is specified");
+        "--diff-size has no effect when --uncomp is specified");
+  }
+  if (argument_specified[argument_index_lz_mode]) {
+    nsmbw_compress_print_warning(
+        "--lz-mode has no effect when --uncomp is specified");
   }
 
   size_t expanded_size;
@@ -662,6 +709,7 @@ static int main_compress(const void *input_file, size_t input_file_size,
     argument_specified[argument_index_type] = true;
     argument_values[argument_index_type].string_value = "lz";
   }
+
   enum nsmbw_compress_type compression_type;
   const char *type_str = argument_values[argument_index_type].string_value;
   compression_type = compress_type_from_str(type_str);
@@ -678,6 +726,25 @@ static int main_compress(const void *input_file, size_t input_file_size,
         "Compression type %s is not supported for compression",
         compression_type_names[compression_type]);
     return EXIT_FAILURE;
+  }
+
+  if (argument_specified[argument_index_lz_mode] &&
+      compression_type != nsmbw_compress_type_lz) {
+    nsmbw_compress_print_warning(
+        "--lz-mode has no effect for compression type %s",
+        compression_type_names[compression_type]);
+  }
+  if (argument_specified[argument_index_huff_size] &&
+      compression_type != nsmbw_compress_type_huff) {
+    nsmbw_compress_print_warning(
+        "--huff-size has no effect for compression type %s",
+        compression_type_names[compression_type]);
+  }
+  if (argument_specified[argument_index_diff_size] &&
+      compression_type != nsmbw_compress_type_diff) {
+    nsmbw_compress_print_warning(
+        "--diff-size has no effect for compression type %s",
+        compression_type_names[compression_type]);
   }
 
   if (!argument_specified[argument_index_output]) {
@@ -721,15 +788,11 @@ static int main_compress(const void *input_file, size_t input_file_size,
   }
 
   struct nsmbw_compress_parameters params = {
-      .lz_extended = argument_specified[argument_index_old_lz11]
-                         ? !argument_values[argument_index_old_lz11].bool_value
-                         : true,
-      .huff_bit_size = argument_specified[argument_index_bitsize]
-                           ? argument_values[argument_index_bitsize].int_value
-                           : 8,
+      .lz_mode = get_lz_mode(),
+      .huff_bit_size = get_huff_bit_size(),
       .filter_diff_size =
-          argument_specified[argument_index_diffsize]
-              ? argument_values[argument_index_diffsize].int_value
+          argument_specified[argument_index_diff_size]
+              ? argument_values[argument_index_diff_size].int_value
               : 8,
   };
 

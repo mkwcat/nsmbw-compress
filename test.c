@@ -50,9 +50,9 @@ static void run_compression_tests() {
 
     size_t compressed_size = 0x1000 + BUFFER_SIZE * 4;
     struct nsmbw_compress_parameters params = {
-        .huff_bit_size = 4,
+        .huff_bit_size = 0,
         .filter_diff_size = 16,
-        .lz_extended = true,
+        .lz_mode = nsmbw_compress_lz_mode_auto,
     };
     if (!encode_func(generated_uncompressed_data, compressed_data, BUFFER_SIZE,
                      &compressed_size, &params)) {

@@ -31,10 +31,16 @@ enum nsmbw_compress_cx_type {
   nsmbw_compress_cx_type_mask = 0xF0,
 };
 
+enum nsmbw_compress_lz_mode {
+  nsmbw_compress_lz_mode_0 = 0,
+  nsmbw_compress_lz_mode_1 = 1,
+  nsmbw_compress_lz_mode_auto = 2,
+};
+
 struct nsmbw_compress_parameters {
+  enum nsmbw_compress_lz_mode lz_mode;
   uint8_t huff_bit_size;
   uint8_t filter_diff_size;
-  bool lz_extended;
 };
 
 typedef bool (*nsmbw_compress_function)(

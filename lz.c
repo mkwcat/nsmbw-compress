@@ -419,22 +419,14 @@ size_t nsmbw_compress_lz_slide_to(struct nsmbw_compress_lz_context *context,
   return count;
 }
 
-bool nsmbw_compress_lz_encode(
-    const uint8_t *restrict src, uint8_t *restrict dst, size_t src_length,
-    size_t *dst_length,
-    const struct nsmbw_compress_parameters *restrict params) {
-  static const uint32_t window_size = 0x1000;
+static bool lz_encode_mode(const uint8_t *restrict src, uint8_t *restrict dst,
+                           size_t src_length, size_t *dst_length,
+                           enum nsmbw_compress_lz_mode lz_mode,
+                           void *work_buffer, bool print_error) {
+  const uint32_t window_size = 0x1000;
 
-  void *work_buffer =
-      malloc(nsmbw_compress_lz_get_work_size(window_size, false));
-  if (work_buffer == NULL) {
-    nsmbw_compress_print_error(
-        "Failed to allocate memory for LZ compression work buffer: %s",
-        strerror(errno));
-    return false;
-  }
-
-  const unsigned max_match_size = params->lz_extended ? 0x10110 : 0x12;
+  const unsigned max_match_size =
+      lz_mode == nsmbw_compress_lz_mode_1 ? 0x10110 : 0x12;
   const size_t max_dst_size = *dst_length;
   const uint8_t *dst_start = dst;
   const uint8_t *dst_end = dst + max_dst_size;
@@ -443,11 +435,12 @@ bool nsmbw_compress_lz_encode(
   if (src_length < 0x1000000) {
     ncutil_write_le_u32(dst, 0,
                         src_length << 8 | nsmbw_compress_cx_type_lz |
-                            params->lz_extended);
+                            (lz_mode == nsmbw_compress_lz_mode_1));
     dst += sizeof(uint32_t);
   } else {
     ncutil_write_le_u32(dst, 0,
-                        nsmbw_compress_cx_type_lz | params->lz_extended);
+                        nsmbw_compress_cx_type_lz |
+                            (lz_mode == nsmbw_compress_lz_mode_1));
     ncutil_write_le_u32(dst, sizeof(uint32_t), src_length);
     dst += sizeof(uint32_t) + sizeof(uint32_t);
   }
@@ -471,9 +464,11 @@ bool nsmbw_compress_lz_encode(
       if (!match_size) {
         // Literal byte
         if (dst + 1 > dst_end) {
-          nsmbw_compress_print_error("Output file is too much larger than the "
-                                     "input file; aborting compression");
-          free(work_buffer);
+          if (print_error) {
+            nsmbw_compress_print_error(
+                "Output file is too much larger than the "
+                "input file; aborting compression");
+          }
           return false;
         }
 
@@ -484,9 +479,10 @@ bool nsmbw_compress_lz_encode(
       }
 
       if (dst + 5 > dst_end) {
-        nsmbw_compress_print_error("Output file is too much larger than the "
-                                   "input file; aborting compression");
-        free(work_buffer);
+        if (print_error) {
+          nsmbw_compress_print_error("Output file is too much larger than the "
+                                     "input file; aborting compression");
+        }
         return false;
       }
 
@@ -509,7 +505,7 @@ bool nsmbw_compress_lz_encode(
 
       uint32_t match_size_byte = match_size - 3;
 
-      if (params->lz_extended) {
+      if (lz_mode == nsmbw_compress_lz_mode_1) {
         if (match_size >= 0x111) {
           match_size_byte = match_size - 0x111;
 
@@ -525,9 +521,10 @@ bool nsmbw_compress_lz_encode(
       }
 
       if (dst + 2 > dst_end) {
-        nsmbw_compress_print_error("Output file is too much larger than the "
-                                   "input file; aborting compression");
-        free(work_buffer);
+        if (print_error) {
+          nsmbw_compress_print_error("Output file is too much larger than the "
+                                     "input file; aborting compression");
+        }
         return false;
       }
 
@@ -538,8 +535,69 @@ bool nsmbw_compress_lz_encode(
     *flags_ptr = flags;
   }
 
-  free(work_buffer);
-
   *dst_length = dst - dst_start;
   return *dst_length != 0;
+}
+
+bool nsmbw_compress_lz_encode(
+    const uint8_t *restrict src, uint8_t *restrict dst, size_t src_length,
+    size_t *dst_length,
+    const struct nsmbw_compress_parameters *restrict params) {
+  static const uint32_t window_size = 0x1000;
+
+  void *work_buffer =
+      malloc(nsmbw_compress_lz_get_work_size(window_size, false));
+  if (work_buffer == NULL) {
+    nsmbw_compress_print_error(
+        "Failed to allocate memory for LZ compression work buffer: %s",
+        strerror(errno));
+    return false;
+  }
+
+  enum nsmbw_compress_lz_mode lz_mode = params->lz_mode;
+  if (lz_mode != nsmbw_compress_lz_mode_auto) {
+    bool result = lz_encode_mode(src, dst, src_length, dst_length, lz_mode,
+                                 work_buffer, true);
+    free(work_buffer);
+    return result;
+  }
+
+  // Auto mode: Run both and pick the smaller one
+  size_t dst_length_1 = *dst_length;
+  if (!lz_encode_mode(src, dst, src_length, &dst_length_1,
+                      nsmbw_compress_lz_mode_1, work_buffer, true)) {
+    free(work_buffer);
+    return false;
+  }
+
+  size_t dst_length_0 = dst_length_1;
+  void *out_buffer_0 = malloc(dst_length_0);
+  if (out_buffer_0 == NULL) {
+    nsmbw_compress_print_error(
+        "Failed to allocate memory for LZ compression output buffer: %s",
+        strerror(errno));
+    free(work_buffer);
+    return false;
+  }
+
+  bool result = lz_encode_mode(src, out_buffer_0, src_length, &dst_length_0,
+                               nsmbw_compress_lz_mode_0, work_buffer, false);
+  free(work_buffer);
+
+  if (!result || dst_length_1 <= dst_length_0) {
+    free(out_buffer_0);
+    nsmbw_compress_print_verbose(
+        "Selected LZ mode 1 compression (compressed size: %zu bytes)",
+        dst_length_1);
+    *dst_length = dst_length_1;
+    return true;
+  }
+
+  nsmbw_compress_print_verbose(
+      "Selected LZ mode 0 compression (compressed size: %zu bytes)",
+      dst_length_0);
+  *dst_length = dst_length_0;
+  memcpy(dst, out_buffer_0, dst_length_0);
+  free(out_buffer_0);
+  return true;
 }

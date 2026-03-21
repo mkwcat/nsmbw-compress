@@ -667,11 +667,10 @@ uint32_t nsmbw_compress_huff_convert_data(
   return length;
 }
 
-bool nsmbw_compress_huff_encode(
-    const uint8_t *src, uint8_t *dst, size_t src_length, size_t *dst_length,
-    const struct nsmbw_compress_parameters *params) {
-  void *work_buffer =
-      malloc(nsmbw_compress_huff_get_work_size(params->huff_bit_size));
+static bool huff_encode(const uint8_t *src, uint8_t *dst, size_t src_length,
+                        size_t *dst_length, uint8_t huff_bit_size,
+                        bool print_error) {
+  void *work_buffer = malloc(nsmbw_compress_huff_get_work_size(huff_bit_size));
   if (work_buffer == NULL) {
     nsmbw_compress_print_error(
         "Failed to allocate memory for Huffman compression work buffer: %s",
@@ -679,7 +678,6 @@ bool nsmbw_compress_huff_encode(
     return false;
   }
 
-  const uint16_t huff_bit_size = params->huff_bit_size;
   const uint16_t huff_sym_size = nsmbw_compress_huff_sym_size(huff_bit_size);
   const size_t max_dst_size = *dst_length;
 
@@ -707,8 +705,10 @@ bool nsmbw_compress_huff_encode(
   uint32_t tree_length_pos = length;
 
   if (length + ((table.tree_count + 1) << 1) >= max_dst_size) {
-    nsmbw_compress_print_error("Output file is too much larger than the "
-                               "input file; aborting compression");
+    if (print_error) {
+      nsmbw_compress_print_error("Output file is too much larger than the "
+                                 "input file; aborting compression");
+    }
     free(work_buffer);
     return false;
   }
@@ -731,8 +731,10 @@ bool nsmbw_compress_huff_encode(
       table.nodes, src, dst + length, src_length, max_dst_size - length,
       huff_bit_size);
   if (!converted_size) {
-    nsmbw_compress_print_error("Output file is too much larger than the "
-                               "input file; aborting compression");
+    if (print_error) {
+      nsmbw_compress_print_error("Output file is too much larger than the "
+                                 "input file; aborting compression");
+    }
     free(work_buffer);
     return false;
   }
@@ -743,4 +745,54 @@ bool nsmbw_compress_huff_encode(
 
   *dst_length = length;
   return *dst_length != 0;
+}
+
+bool nsmbw_compress_huff_encode(
+    const uint8_t *src, uint8_t *dst, size_t src_length, size_t *dst_length,
+    const struct nsmbw_compress_parameters *params) {
+  const uint8_t huff_bit_size = params->huff_bit_size;
+  if (huff_bit_size != 4 && huff_bit_size != 8 && huff_bit_size != 0) {
+    nsmbw_compress_print_error("Invalid Huffman bit size for compression: %d "
+                               "(expected 4, 8, or 0 (for auto))",
+                               huff_bit_size);
+    return false;
+  }
+
+  if (huff_bit_size != 0) {
+    return huff_encode(src, dst, src_length, dst_length, huff_bit_size, true);
+  }
+
+  // Auto mode: Run both and pick the smaller one
+  size_t dst_length_8 = *dst_length;
+  if (!huff_encode(src, dst, src_length, &dst_length_8, 8, true)) {
+    return false;
+  }
+
+  size_t dst_length_4 = *dst_length;
+  void *dst_buffer_4 = malloc(dst_length_4);
+  if (dst_buffer_4 == NULL) {
+    nsmbw_compress_print_error(
+        "Failed to allocate memory for Huffman compression output buffer: %s",
+        strerror(errno));
+    return false;
+  }
+
+  bool result =
+      huff_encode(src, dst_buffer_4, src_length, &dst_length_4, 4, true);
+
+  if (!result || dst_length_8 <= dst_length_4) {
+    free(dst_buffer_4);
+    nsmbw_compress_print_verbose(
+        "Selected Huffman bit size 8 (compressed size: %zu bytes)",
+        dst_length_8);
+    *dst_length = dst_length_8;
+    return true;
+  }
+
+  nsmbw_compress_print_verbose(
+      "Selected Huffman bit size 4 (compressed size: %zu bytes)", dst_length_4);
+  *dst_length = dst_length_4;
+  memcpy(dst, dst_buffer_4, dst_length_4);
+  free(dst_buffer_4);
+  return true;
 }
