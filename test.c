@@ -56,6 +56,7 @@ static void run_compression_tests() {
         .huff_bit_size = 0,
         .filter_diff_size = 16,
         .lz_mode = nsmbw_compress_lz_mode_auto,
+        .asr_mode = nsmbw_compress_asr_mode_auto,
     };
     if (!encode_func(generated_uncompressed_data, compressed_data, BUFFER_SIZE,
                      &compressed_size, &params)) {

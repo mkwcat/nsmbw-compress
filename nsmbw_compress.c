@@ -135,14 +135,25 @@ static const struct nsmbw_compress_argument arguments[] = {
 #define argument_index_huff_size 5
     },
     {
+        .short_name = 'r',
+        .long_name = "asr-mode",
+        .long_name_length = sizeof("asr-mode") - 1,
+        .description = "<0, 1, auto*> Specify the mode for ASR compression. "
+                       "Mode 1 has a larger offset range than mode 0. Auto "
+                       "mode will try both and choose the smaller output.",
+        .type = nsmbw_compress_argument_type_string,
+        .index = 6,
+#define argument_index_asr_mode 6
+    },
+    {
         .short_name = 'd',
         .long_name = "diff-size",
         .long_name_length = sizeof("diff-size") - 1,
         .description =
             "<4, 8*> Specify the element size for filter-diff encoding.",
         .type = nsmbw_compress_argument_type_int,
-        .index = 6,
-#define argument_index_diff_size 6
+        .index = 7,
+#define argument_index_diff_size 7
     },
     {
         .short_name = '\0',
@@ -150,8 +161,8 @@ static const struct nsmbw_compress_argument arguments[] = {
         .long_name_length = sizeof("test") - 1,
         .description = "Run internal tests and exit",
         .type = nsmbw_compress_argument_type_bool,
-        .index = 7,
-#define argument_index_test 7
+        .index = 8,
+#define argument_index_test 8
     },
     {
         .short_name = 'v',
@@ -159,8 +170,8 @@ static const struct nsmbw_compress_argument arguments[] = {
         .long_name_length = sizeof("verbose") - 1,
         .description = "Print verbose output",
         .type = nsmbw_compress_argument_type_bool,
-        .index = 8,
-#define argument_index_verbose 8
+        .index = 9,
+#define argument_index_verbose 9
     },
 };
 
@@ -251,6 +262,25 @@ static uint8_t get_huff_bit_size() {
     }
   } else {
     return 0; // Default to auto
+  }
+}
+
+static enum nsmbw_compress_asr_mode get_asr_mode() {
+  if (argument_specified[argument_index_asr_mode]) {
+    const char *str = argument_values[argument_index_asr_mode].string_value;
+    if (strcmp(str, "0") == 0) {
+      return nsmbw_compress_asr_mode_0;
+    } else if (strcmp(str, "1") == 0) {
+      return nsmbw_compress_asr_mode_1;
+    } else if (strcmp(str, "auto") == 0) {
+      return nsmbw_compress_asr_mode_auto;
+    } else {
+      nsmbw_compress_print_error("Invalid ASR mode: %s. Use 0, 1, or auto.",
+                                 str);
+      exit(EXIT_FAILURE);
+    }
+  } else {
+    return nsmbw_compress_asr_mode_auto; // Default to auto
   }
 }
 
@@ -795,6 +825,7 @@ static int main_compress(const void *input_file, size_t input_file_size,
           argument_specified[argument_index_diff_size]
               ? argument_values[argument_index_diff_size].int_value
               : 8,
+      .asr_mode = get_asr_mode(),
   };
 
   clock_t start_time, end_time;

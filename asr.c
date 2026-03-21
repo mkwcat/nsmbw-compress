@@ -263,7 +263,8 @@ static bool asr_encode_range(uint16_t *src, uint32_t src_length,
 }
 
 static bool asr_encode(const uint8_t *src, uint32_t src_length, uint8_t *dst,
-                       size_t *dst_length, uint8_t asr_mode) {
+                       size_t *dst_length,
+                       enum nsmbw_compress_asr_mode asr_mode) {
   if (*dst_length < 0x10) {
     nsmbw_compress_print_error("Output buffer is too small for ASR0 header");
     return false;
@@ -291,7 +292,7 @@ static bool asr_encode(const uint8_t *src, uint32_t src_length, uint8_t *dst,
   dst[1] = 'S';
   dst[2] = 'R';
   dst[3] = '0';
-  dst[4] = asr_mode ? 0x80 : 0;
+  dst[4] = asr_mode ? 0x80 : 0x00;
   dst[5] = (src_length >> 16) & 0xFF;
   dst[6] = (src_length >> 8) & 0xFF;
   dst[7] = src_length & 0xFF;
@@ -333,7 +334,45 @@ static bool asr_encode(const uint8_t *src, uint32_t src_length, uint8_t *dst,
 bool nsmbw_compress_asr_encode(const uint8_t *src, uint8_t *dst,
                                size_t src_length, size_t *dst_length,
                                const struct nsmbw_compress_parameters *params) {
-  uint8_t asr_mode = 1; // Temporary
+  enum nsmbw_compress_asr_mode asr_mode = params->asr_mode;
+  if (asr_mode != nsmbw_compress_asr_mode_auto) {
+    bool result = asr_encode(src, src_length, dst, dst_length, asr_mode);
+    return result;
+  }
 
-  return asr_encode(src, src_length, dst, dst_length, asr_mode);
+  // Auto mode: Run both and pick the smaller one
+  size_t dst_length_1 = *dst_length;
+  if (!asr_encode(src, src_length, dst, &dst_length_1,
+                  nsmbw_compress_asr_mode_1)) {
+    return false;
+  }
+
+  size_t dst_length_0 = dst_length_1;
+  void *out_buffer_0 = malloc(dst_length_0);
+  if (out_buffer_0 == NULL) {
+    nsmbw_compress_print_error(
+        "Failed to allocate memory for ASR compression output buffer: %s",
+        strerror(errno));
+    return false;
+  }
+
+  bool result = asr_encode(src, src_length, out_buffer_0, &dst_length_0,
+                           nsmbw_compress_asr_mode_0);
+
+  if (!result || dst_length_1 <= dst_length_0) {
+    free(out_buffer_0);
+    nsmbw_compress_print_verbose(
+        "Selected ASR mode 1 compression (compressed size: %zu bytes)",
+        dst_length_1);
+    *dst_length = dst_length_1;
+    return true;
+  }
+
+  nsmbw_compress_print_verbose(
+      "Selected ASR mode 0 compression (compressed size: %zu bytes)",
+      dst_length_0);
+  *dst_length = dst_length_0;
+  memcpy(dst, out_buffer_0, dst_length_0);
+  free(out_buffer_0);
+  return true;
 }
