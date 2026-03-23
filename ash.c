@@ -37,7 +37,8 @@ struct nsmbw_compress_ash_decode_context {
 };
 
 static int ash_get_bits_code(struct nsmbw_compress_ash_decode_context *context,
-                             const uint8_t *src, int size, int tree) {
+                             const uint8_t *src, size_t src_length, int size,
+                             int tree) {
   int byte_index = context->stream_byte[tree];
   int bit_index = context->stream_bit[tree];
   uint32_t bits = context->stream_data[tree];
@@ -47,6 +48,11 @@ static int ash_get_bits_code(struct nsmbw_compress_ash_decode_context *context,
   // Read past end of bitstream
   if (bit_index + size > 32) {
     // Need to refresh bitstream
+    if (byte_index + sizeof(uint32_t) > src_length) {
+      nsmbw_compress_print_error(
+          "Input file is too small to decode next ASH compressed data");
+      return -1;
+    }
     uint32_t new_bits = ncutil_read_be_u32(src, byte_index);
 
     // Need to read part of old bits and part of new bits
@@ -65,6 +71,11 @@ static int ash_get_bits_code(struct nsmbw_compress_ash_decode_context *context,
     code = bits >> (32 - size);
 
     // Need to refresh bitstream
+    if (byte_index + sizeof(uint32_t) > src_length) {
+      nsmbw_compress_print_error(
+          "Input file is too small to decode next ASH compressed data");
+      return -1;
+    }
     context->stream_data[tree] = ncutil_read_be_u32(src, byte_index);
 
     context->stream_byte[tree] = byte_index + sizeof(uint32_t);
@@ -81,7 +92,7 @@ static int ash_get_bits_code(struct nsmbw_compress_ash_decode_context *context,
 }
 
 static int ash_get_bit_1c(struct nsmbw_compress_ash_decode_context *context,
-                          const uint8_t *src, int tree) {
+                          const uint8_t *src, size_t src_length, int tree) {
   int byte_index = context->stream_byte[tree];
   int bit_index = context->stream_bit[tree];
   uint32_t bits = context->stream_data[tree];
@@ -91,6 +102,11 @@ static int ash_get_bit_1c(struct nsmbw_compress_ash_decode_context *context,
   // Read to end of bitstream
   if (bit_index == 31) {
     // Need to refresh bitstream
+    if (byte_index + sizeof(uint32_t) > src_length) {
+      nsmbw_compress_print_error(
+          "Input file is too small to decode next ASH compressed data");
+      return -1;
+    }
     context->stream_data[tree] = ncutil_read_be_u32(src, byte_index);
 
     context->stream_byte[tree] = byte_index + sizeof(uint32_t);
@@ -106,14 +122,14 @@ static int ash_get_bit_1c(struct nsmbw_compress_ash_decode_context *context,
 }
 
 static int ash_read_tree_9(struct nsmbw_compress_ash_decode_context *context,
-                           const uint8_t *src) {
+                           const uint8_t *src, size_t src_length) {
   uint32_t index = context->next_node_id[ash_tree_literal];
 
   int sp = 0;
 
   while (true) {
     // Push left/right node to the stack
-    if (ash_get_bit_1c(context, src, ash_tree_literal)) {
+    if (ash_get_bit_1c(context, src, src_length, ash_tree_literal)) {
       context->stack[sp] = ash_node_right | index;
       context->stack[sp + 1] = ash_node_left | index;
       index++;
@@ -124,7 +140,7 @@ static int ash_read_tree_9(struct nsmbw_compress_ash_decode_context *context,
     }
 
     // Assign value to the previous node
-    int code = ash_get_bits_code(context, src, 9, ash_tree_literal);
+    int code = ash_get_bits_code(context, src, src_length, 9, ash_tree_literal);
 
     while (true) {
       // Pop last node from the stack
@@ -152,14 +168,14 @@ static int ash_read_tree_9(struct nsmbw_compress_ash_decode_context *context,
 }
 
 static int ash_read_tree_12(struct nsmbw_compress_ash_decode_context *context,
-                            const uint8_t *pData) {
+                            const uint8_t *pData, size_t src_length) {
   uint32_t index = context->next_node_id[ash_tree_back_ref];
 
   int sp = 0;
 
   while (true) {
     // Push left/right node to the stack
-    if (ash_get_bit_1c(context, pData, ash_tree_back_ref) != 0) {
+    if (ash_get_bit_1c(context, pData, src_length, ash_tree_back_ref) != 0) {
       context->stack[sp] = ash_node_right | index;
       context->stack[sp + 1] = ash_node_left | index;
       index++;
@@ -170,7 +186,8 @@ static int ash_read_tree_12(struct nsmbw_compress_ash_decode_context *context,
     }
 
     // Assign value to the previous node
-    int code = ash_get_bits_code(context, pData, 11, ash_tree_back_ref);
+    int code =
+        ash_get_bits_code(context, pData, src_length, 11, ash_tree_back_ref);
 
     while (true) {
       // Pop last node from the stack
@@ -209,7 +226,7 @@ bool nsmbw_compress_ash_decode(const uint8_t *src, uint8_t *dst,
     return false;
   }
 
-  const size_t expand_size = ncutil_read_be_u32(src, 4) & 0x00FFFFFF;
+  const uint32_t expand_size = ncutil_read_be_u32(src, 4) & 0x00FFFFFFu;
   assert(expand_size <= *dst_length);
   if (expand_size > *dst_length) {
     nsmbw_compress_print_error(
@@ -221,7 +238,7 @@ bool nsmbw_compress_ash_decode(const uint8_t *src, uint8_t *dst,
 
   const uint32_t back_ref_ofs = ncutil_read_be_u32(src, 8);
 
-  context.stream_byte[ash_tree_literal] = 0xC; // Skip header
+  context.stream_byte[ash_tree_literal] = sizeof(uint32_t) * 3; // Skip header
   context.stream_byte[ash_tree_back_ref] = back_ref_ofs;
 
   context.stream_bit[ash_tree_literal] = context.stream_bit[ash_tree_back_ref] =
@@ -230,23 +247,23 @@ bool nsmbw_compress_ash_decode(const uint8_t *src, uint8_t *dst,
   context.next_node_id[ash_tree_literal] = ash_node_9_min;
   context.next_node_id[ash_tree_back_ref] = ash_node_12_min;
 
-  ash_get_bits_code(&context, src, 32, ash_tree_literal);
-  ash_get_bits_code(&context, src, 32, ash_tree_back_ref);
+  ash_get_bits_code(&context, src, src_length, 32, ash_tree_literal);
+  ash_get_bits_code(&context, src, src_length, 32, ash_tree_back_ref);
 
-  int root9 = ash_read_tree_9(&context, src);
+  int root9 = ash_read_tree_9(&context, src, src_length);
   if (root9 < 0) {
     return false;
   }
-  int root12 = ash_read_tree_12(&context, src);
+  int root12 = ash_read_tree_12(&context, src, src_length);
   if (root12 < 0) {
     return false;
   }
 
-  int dst_index = 0;
+  uint32_t dst_index = 0;
   while (dst_index < expand_size) {
     int node12, node9;
     for (node9 = root9; node9 >= ash_node_9_min;) {
-      if (ash_get_bit_1c(&context, src, ash_tree_literal) != 0) {
+      if (ash_get_bit_1c(&context, src, src_length, ash_tree_literal) != 0) {
         node9 = context.right9[node9];
       } else {
         node9 = context.left9[node9];
@@ -259,7 +276,7 @@ bool nsmbw_compress_ash_decode(const uint8_t *src, uint8_t *dst,
     }
 
     for (node12 = root12; node12 >= ash_node_12_min;) {
-      if (ash_get_bit_1c(&context, src, ash_tree_back_ref) != 0) {
+      if (ash_get_bit_1c(&context, src, src_length, ash_tree_back_ref) != 0) {
         node12 = context.right12[node12];
       } else {
         node12 = context.left12[node12];
