@@ -294,6 +294,14 @@ void nsmbw_compress_huff_count_data(struct nsmbw_compress_huff_node *nodes,
   }
 }
 
+void nsmbw_compress_huff_count_data_u16(struct nsmbw_compress_huff_node *nodes,
+                                        uint16_t const *data, uint32_t size,
+                                        uint8_t huff_bit_size) {
+  for (uint32_t i = 0; i < size; i++) {
+    nodes[data[i]].count++;
+  }
+}
+
 static void
 huff_add_parent_depth_to_table(struct nsmbw_compress_huff_node *nodes,
                                huff_size_t left_index,

@@ -11,6 +11,10 @@ extern "C" {
 typedef uint16_t nsmbw_compress_huff_size_t;
 static const nsmbw_compress_huff_size_t nsmbw_compress_huff_invalid_node =
     (nsmbw_compress_huff_size_t)-1;
+static const nsmbw_compress_huff_size_t nsmbw_compress_left_leaf_flag = 0x8000u;
+static const nsmbw_compress_huff_size_t nsmbw_compress_right_leaf_flag = 0x4000u;
+static const nsmbw_compress_huff_size_t nsmbw_compress_leaf_flags_mask =
+    nsmbw_compress_left_leaf_flag | nsmbw_compress_right_leaf_flag;
 
 struct nsmbw_compress_huff_table {
   struct nsmbw_compress_huff_node *nodes;
@@ -53,6 +57,10 @@ void nsmbw_compress_huff_init_table(struct nsmbw_compress_huff_table *table,
 void nsmbw_compress_huff_count_data(struct nsmbw_compress_huff_node *nodes,
                                     uint8_t const *data, uint32_t size,
                                     uint8_t huff_bit_size);
+
+void nsmbw_compress_huff_count_data_u16(struct nsmbw_compress_huff_node *nodes,
+                                        uint16_t const *data, uint32_t size,
+                                        uint8_t huff_bit_size);
 
 static inline void
 nsmbw_compress_huff_count_byte(struct nsmbw_compress_huff_node *nodes,

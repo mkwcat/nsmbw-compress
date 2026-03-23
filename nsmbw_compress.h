@@ -120,6 +120,11 @@ nsmbw_compress_szs_decode(const uint8_t *src, uint8_t *dst, size_t src_length,
                           const struct nsmbw_compress_parameters *params);
 
 extern bool
+nsmbw_compress_ash_encode(const uint8_t *src, uint8_t *dst, size_t src_length,
+                          size_t *dst_length,
+                          const struct nsmbw_compress_parameters *params);
+
+extern bool
 nsmbw_compress_ash_decode(const uint8_t *src, uint8_t *dst, size_t src_length,
                           size_t *dst_length,
                           const struct nsmbw_compress_parameters *params);

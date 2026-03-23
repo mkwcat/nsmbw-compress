@@ -131,10 +131,15 @@ struct ncutil_bit_writer {
   uint8_t *data;
   uint32_t offset;
   uint8_t bit;
+  uint32_t max_size;
 };
 
-static inline void ncutil_bit_writer_write(struct ncutil_bit_writer *writer,
+static inline bool ncutil_bit_writer_write(struct ncutil_bit_writer *writer,
                                            uint32_t value, int bit_size) {
+  if (writer->max_size &&
+      writer->offset + (writer->bit + bit_size + 7) / 8 > writer->max_size) {
+    return false;
+  }
 
   value &= (1u << bit_size) - 1u;
   if (writer->bit) {
@@ -147,21 +152,32 @@ static inline void ncutil_bit_writer_write(struct ncutil_bit_writer *writer,
   if (writer->bit) {
     writer->data[writer->offset] = value << (8 - writer->bit);
   }
+  return true;
 }
 
-static inline void ncutil_bit_writer_flush(struct ncutil_bit_writer *writer) {
+static inline bool ncutil_bit_writer_flush(struct ncutil_bit_writer *writer) {
   if (writer->bit) {
+    if (writer->max_size && writer->offset + 1 > writer->max_size) {
+      return false;
+    }
     writer->offset++;
     writer->bit = 0;
   }
+  return true;
 }
 
-static inline void ncutil_bit_writer_pad(struct ncutil_bit_writer *writer,
+static inline bool ncutil_bit_writer_pad(struct ncutil_bit_writer *writer,
                                          int byte_alignment) {
-  ncutil_bit_writer_flush(writer);
+  if (!ncutil_bit_writer_flush(writer)) {
+    return false;
+  }
   while (writer->offset % byte_alignment != 0) {
+    if (writer->max_size && writer->offset + 1 > writer->max_size) {
+      return false;
+    }
     writer->data[writer->offset++] = 0;
   }
+  return true;
 }
 
 struct ncutil_bit_reader {

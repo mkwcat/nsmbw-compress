@@ -19,7 +19,8 @@ static const nsmbw_compress_function test_compress_functions[][2] = {
                                   nsmbw_compress_diff_decode},
     [nsmbw_compress_type_szs] = {nsmbw_compress_szs_encode,
                                  nsmbw_compress_szs_decode},
-    [nsmbw_compress_type_ash] = {NULL, nsmbw_compress_ash_decode},
+    [nsmbw_compress_type_ash] = {nsmbw_compress_ash_encode,
+                                 nsmbw_compress_ash_decode},
     [nsmbw_compress_type_asr] = {nsmbw_compress_asr_encode,
                                  nsmbw_compress_asr_decode},
 };

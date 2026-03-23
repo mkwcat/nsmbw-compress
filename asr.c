@@ -265,7 +265,9 @@ static bool asr_encode_range(uint16_t *src, uint32_t src_length,
 static bool asr_encode(const uint8_t *src, uint32_t src_length, uint8_t *dst,
                        size_t *dst_length,
                        enum nsmbw_compress_asr_mode asr_mode) {
-  if (*dst_length < 0x10) {
+  const size_t max_dst_size = *dst_length;
+
+  if (max_dst_size < 0x10) {
     nsmbw_compress_print_error("Output buffer is too small for ASR0 header");
     return false;
   }
@@ -273,11 +275,6 @@ static bool asr_encode(const uint8_t *src, uint32_t src_length, uint8_t *dst,
     nsmbw_compress_print_error("Input data is too large for ASR0 format");
     return false;
   }
-
-  const size_t max_dst_size = *dst_length;
-  const uint8_t *dst_start = dst;
-  const uint8_t *dst_end = dst + max_dst_size;
-  const uint8_t *src_end = src + src_length;
 
   // Encode LZ data with src
   uint16_t *sym_buffer, *off_buffer;
