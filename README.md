@@ -1,37 +1,40 @@
 # nsmbw-compress
 
 Tool for encoding and decoding various different compression formats supported by
-New Super Mario Bros. Wii, based on
+New Super Mario Bros. Wii and other games using the same libraries, based on
 a [decompilation of the CX library](https://github.com/doldecomp/sdk_2009-12-11/tree/536dd80cde16989a4914305a1f1095122ab1c44f/source/cx).
 
 Here's a list of the supported formats:
-| Format        | Extension | Description         | Encode | Decode |
-| ------------- | --------- | ------------------- | ------ | ------ |
-| `lz`          | `.LZ`     | Lempel-Ziv          | Yes    | Yes    |
-| `huff`        | `.HUFF`   | Huffman             | Yes    | Yes    |
-| `rl`          | `.RL`     | Run-length          | Yes    | Yes    |
-| `lh`          | `.LH`     | LZ + Huffman        | Yes    | Yes    |
-| `lrc`         | `.LRC`    | LZ + Range Coder    | No     | Yes    |
-| `filter-diff` | `.DIFF`   | Differential Filter | Yes    | Yes    |
-| `szs`         | `.szs`    | SZS/Yaz0            | Yes    | Yes    |
+| Format        | Extension | Description             | Encode | Decode | Known Uses                      |
+| ------------- | --------- | ----------------------- | ------ | ------ | ------------------------------- |
+| `lz`          | `.LZ`     | Lempel-Ziv              | Yes    | Yes    | New Super Mario Bros. Wii       |
+| `huff`        | `.HUFF`   | Huffman                 | Yes    | Yes    |                                 |
+| `rl`          | `.RL`     | Run-length              | Yes    | Yes    |                                 |
+| `lh`          | `.LH`     | LZ + Huffman            | Yes    | Yes    | Mario Sports Mix                |
+| `lrc`         | `.LRC`    | LZ + Range Coder        | No     | Yes    |                                 |
+| `filter-diff` | `.DIFF`   | Differential Filter     | Yes    | Yes    |                                 |
+| `szs`         | `.szs`    | SZS/Yaz0                | Yes    | Yes    | Many first-party Nintendo games |
+| `ash`         | `.ash`    | ASH0 (LZ + Huffman)     | Yes    | Yes    | Wii Menu                        |
+| `asr`         | `.asr`    | ASR0 (LZ + Range Coder) | Yes    | Yes    | Super Mario Advance 4           |
 
 ## Usage
 ```
 Usage: nsmbw-compress [options] <input> [-o output]
 Options:
-  -h, --help     Show this help message and exit
-  -o, --output   Specify the output file name
-  -t, --type     Specify the compression type (see supported types below)
-  -x, --uncomp   Decompress the input file instead of compressing
-  -b, --bitsize  Specify the bit size for Huffman compression (4 or 8, default: 8)
-  -l, --old-lz11 Use the older low-efficiency mode of LZ11
-  -d, --diffsize Specify the size for filter-diff compression (8 or 16, default: 8)
-      --test     Run internal tests and exit
-  -v, --verbose  Print verbose output
+  -h, --help      Show this help message and exit
+  -o, --output    Specify the output file name
+  -t, --type      Specify the compression type (see supported types below)
+  -x, --uncomp    Decompress the input file instead of compressing
+  -l, --lz-mode   <0, 1*, auto> Specify the LZ compression mode. Select mode 1 for better efficiency in 99% of cases, or auto to compress in both modes and choose the smaller output. Mode 0 might be more compatible with older games, but this is unlikely to ever be relevant.
+  -b, --huff-size <4, 8, auto*> Specify the bit size for Huffman compression, or compress both and automatically choose the smaller one.
+  -r, --asr-mode  <0, 1, auto*> Specify the mode for ASR compression. Mode 1 has a larger offset range than mode 0. Auto mode will try both and choose the smaller output.
+  -d, --diff-size <4, 8*> Specify the element size for filter-diff encoding.
+      --test      Run internal tests and exit
+  -v, --verbose   Print verbose output
 Supported types for compression:
-  lz huff rl lh filter-diff szs 
+  lz huff rl lh diff szs ash asr 
 Supported types for decompression:
-  lz huff rl lh lrc filter-diff szs 
+  lz huff rl lh lrc diff szs ash asr 
 ```
 
 ## Comparisons
