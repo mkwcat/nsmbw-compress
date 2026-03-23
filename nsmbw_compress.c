@@ -115,11 +115,7 @@ static const struct nsmbw_compress_argument arguments[] = {
         .short_name = 'l',
         .long_name = "lz-mode",
         .long_name_length = sizeof("lz-mode") - 1,
-        .description = "<0, 1*, auto> Specify the LZ compression mode. Select "
-                       "mode 1 for better efficiency in 99% of cases, or auto "
-                       "to compress in both modes and choose the smaller "
-                       "output. Mode 0 might be more compatible with older "
-                       "games, but this is unlikely to ever be relevant.",
+        .description = "<0, 1*, auto> Specify the LZ compression mode",
         .type = nsmbw_compress_argument_type_string,
         .index = 4,
 #define argument_index_lz_mode 4
@@ -128,9 +124,8 @@ static const struct nsmbw_compress_argument arguments[] = {
         .short_name = 'b',
         .long_name = "huff-size",
         .long_name_length = sizeof("huff-size") - 1,
-        .description = "<4, 8, auto*> Specify the bit size for Huffman "
-                       "compression, or compress both and automatically choose "
-                       "the smaller one.",
+        .description =
+            "<4, 8, auto*> Specify the bit size for Huffman compression",
         .type = nsmbw_compress_argument_type_string,
         .index = 5,
 #define argument_index_huff_size 5
@@ -139,9 +134,7 @@ static const struct nsmbw_compress_argument arguments[] = {
         .short_name = 'r',
         .long_name = "asr-mode",
         .long_name_length = sizeof("asr-mode") - 1,
-        .description = "<0, 1, auto*> Specify the mode for ASR compression. "
-                       "Mode 1 has a larger offset range than mode 0. Auto "
-                       "mode will try both and choose the smaller output.",
+        .description = "<0, 1, auto*> Specify the mode for ASR compression",
         .type = nsmbw_compress_argument_type_string,
         .index = 6,
 #define argument_index_asr_mode 6
@@ -151,7 +144,7 @@ static const struct nsmbw_compress_argument arguments[] = {
         .long_name = "diff-size",
         .long_name_length = sizeof("diff-size") - 1,
         .description =
-            "<4, 8*> Specify the element size for filter-diff encoding.",
+            "<8*, 16> Specify the element size for filter-diff encoding",
         .type = nsmbw_compress_argument_type_int,
         .index = 7,
 #define argument_index_diff_size 7
