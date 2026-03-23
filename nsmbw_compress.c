@@ -87,7 +87,7 @@ static const struct nsmbw_compress_argument arguments[] = {
         .short_name = 'o',
         .long_name = "output",
         .long_name_length = sizeof("output") - 1,
-        .description = "Specify the output file name",
+        .description = "<path> Specify the output file name",
         .type = nsmbw_compress_argument_type_path,
         .index = 1,
 #define argument_index_output 1
@@ -97,7 +97,7 @@ static const struct nsmbw_compress_argument arguments[] = {
         .long_name = "type",
         .long_name_length = sizeof("type") - 1,
         .description =
-            "Specify the compression type (see supported types below)",
+            "<type> Specify the compression type (see supported types below)",
         .type = nsmbw_compress_argument_type_string,
         .index = 2,
 #define argument_index_type 2

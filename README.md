@@ -22,8 +22,8 @@ Here's a list of the supported formats:
 Usage: nsmbw-compress [options] <input> [-o output]
 Options:
   -h, --help      Show this help message and exit
-  -o, --output    Specify the output file name
-  -t, --type      Specify the compression type (see supported types below)
+  -o, --output    <path> Specify the output file name
+  -t, --type      <type> Specify the compression type (see supported types below)
   -x, --uncomp    Decompress the input file instead of compressing
   -l, --lz-mode   <0, 1*, auto> Specify the LZ compression mode. Select mode 1 for better efficiency in 99% of cases, or auto to compress in both modes and choose the smaller output. Mode 0 might be more compatible with older games, but this is unlikely to ever be relevant.
   -b, --huff-size <4, 8, auto*> Specify the bit size for Huffman compression, or compress both and automatically choose the smaller one.
