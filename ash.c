@@ -43,17 +43,30 @@ static int ash_get_bits_code(struct nsmbw_compress_ash_decode_context *context,
   int bit_index = context->stream_bit[tree];
   uint32_t bits = context->stream_data[tree];
 
+  if (byte_index - sizeof(uint32_t) + (bit_index + size - 1) / 8 >=
+      src_length) {
+    nsmbw_compress_print_error(
+        "Reached unexpected end of file while decompressing ASH input data");
+    return -1;
+  }
   int code = 0;
 
   // Read past end of bitstream
   if (bit_index + size > 32) {
     // Need to refresh bitstream
-    if (byte_index + sizeof(uint32_t) > src_length) {
-      nsmbw_compress_print_error(
-          "Input file is too small to decode next ASH compressed data");
-      return -1;
+    uint32_t new_bits = 0;
+    if (byte_index < src_length) {
+      new_bits |= ncutil_static_cast(uint32_t, src[byte_index++]) << 24;
     }
-    uint32_t new_bits = ncutil_read_be_u32(src, byte_index);
+    if (byte_index < src_length) {
+      new_bits |= src[byte_index++] << 16;
+    }
+    if (byte_index < src_length) {
+      new_bits |= src[byte_index++] << 8;
+    }
+    if (byte_index < src_length) {
+      new_bits |= src[byte_index++];
+    }
 
     // Need to read part of old bits and part of new bits
     int old_pos = 32 - size;
@@ -64,21 +77,29 @@ static int ash_get_bits_code(struct nsmbw_compress_ash_decode_context *context,
 
     context->stream_data[tree] = new_bits << bit_index;
     context->stream_bit[tree] = bit_index;
-    context->stream_byte[tree] = byte_index + sizeof(uint32_t);
+    context->stream_byte[tree] = byte_index;
   }
   // Read to end of bitstream
   else if (bit_index + size == 32) {
     code = bits >> (32 - size);
 
     // Need to refresh bitstream
-    if (byte_index + sizeof(uint32_t) > src_length) {
-      nsmbw_compress_print_error(
-          "Input file is too small to decode next ASH compressed data");
-      return -1;
+    uint32_t new_bits = 0;
+    if (byte_index < src_length) {
+      new_bits |= ncutil_static_cast(uint32_t, src[byte_index++]) << 24;
     }
-    context->stream_data[tree] = ncutil_read_be_u32(src, byte_index);
+    if (byte_index < src_length) {
+      new_bits |= src[byte_index++] << 16;
+    }
+    if (byte_index < src_length) {
+      new_bits |= src[byte_index++] << 8;
+    }
+    if (byte_index < src_length) {
+      new_bits |= src[byte_index++];
+    }
+    context->stream_data[tree] = new_bits;
 
-    context->stream_byte[tree] = byte_index + sizeof(uint32_t);
+    context->stream_byte[tree] = byte_index;
     context->stream_bit[tree] = 0;
   }
   // Read some bits
@@ -97,19 +118,32 @@ static int ash_get_bit_1c(struct nsmbw_compress_ash_decode_context *context,
   int bit_index = context->stream_bit[tree];
   uint32_t bits = context->stream_data[tree];
 
+  if (byte_index - sizeof(uint32_t) + bit_index / 8 >= src_length) {
+    nsmbw_compress_print_error(
+        "Reached unexpected end of file while decompressing ASH input data");
+    return -1;
+  }
   int code = bits >> 31;
 
   // Read to end of bitstream
   if (bit_index == 31) {
     // Need to refresh bitstream
-    if (byte_index + sizeof(uint32_t) > src_length) {
-      nsmbw_compress_print_error(
-          "Input file is too small to decode next ASH compressed data");
-      return -1;
+    uint32_t new_bits = 0;
+    if (byte_index < src_length) {
+      new_bits |= ncutil_static_cast(uint32_t, src[byte_index++]) << 24;
     }
-    context->stream_data[tree] = ncutil_read_be_u32(src, byte_index);
+    if (byte_index < src_length) {
+      new_bits |= src[byte_index++] << 16;
+    }
+    if (byte_index < src_length) {
+      new_bits |= src[byte_index++] << 8;
+    }
+    if (byte_index < src_length) {
+      new_bits |= src[byte_index++];
+    }
+    context->stream_data[tree] = new_bits;
 
-    context->stream_byte[tree] = byte_index + sizeof(uint32_t);
+    context->stream_byte[tree] = byte_index;
     context->stream_bit[tree] = 0;
   }
   // Read next bit
@@ -129,18 +163,29 @@ static int ash_read_tree_9(struct nsmbw_compress_ash_decode_context *context,
 
   while (true) {
     // Push left/right node to the stack
-    if (ash_get_bit_1c(context, src, src_length, ash_tree_literal)) {
+    int bit = ash_get_bit_1c(context, src, src_length, ash_tree_literal);
+    if (bit < 0) {
+      return -1;
+    }
+    if (bit) {
       context->stack[sp] = ash_node_right | index;
       context->stack[sp + 1] = ash_node_left | index;
       index++;
 
       sp += 2;
-      assert(sp < ash_tree_stack_size);
+      if (sp >= ash_tree_stack_size) {
+        nsmbw_compress_print_error("Invalid ASH compressed file: exceeded max "
+                                   "depth in literal tree");
+        return -1;
+      }
       continue;
     }
 
     // Assign value to the previous node
     int code = ash_get_bits_code(context, src, src_length, 9, ash_tree_literal);
+    if (code < 0) {
+      return -1;
+    }
 
     while (true) {
       // Pop last node from the stack
@@ -175,19 +220,30 @@ static int ash_read_tree_12(struct nsmbw_compress_ash_decode_context *context,
 
   while (true) {
     // Push left/right node to the stack
-    if (ash_get_bit_1c(context, pData, src_length, ash_tree_back_ref) != 0) {
+    int bit = ash_get_bit_1c(context, pData, src_length, ash_tree_back_ref);
+    if (bit < 0) {
+      return -1;
+    }
+    if (bit) {
       context->stack[sp] = ash_node_right | index;
       context->stack[sp + 1] = ash_node_left | index;
       index++;
 
       sp += 2;
-      assert(sp < ash_tree_stack_size);
+      if (sp >= ash_tree_stack_size) {
+        nsmbw_compress_print_error("Invalid ASH compressed file: exceeded max "
+                                   "depth in back reference tree");
+        return -1;
+      }
       continue;
     }
 
     // Assign value to the previous node
     int code =
         ash_get_bits_code(context, pData, src_length, 11, ash_tree_back_ref);
+    if (code < 0) {
+      return -1;
+    }
 
     while (true) {
       // Pop last node from the stack
@@ -247,8 +303,10 @@ bool nsmbw_compress_ash_decode(const uint8_t *src, uint8_t *dst,
   context.next_node_id[ash_tree_literal] = ash_node_9_min;
   context.next_node_id[ash_tree_back_ref] = ash_node_12_min;
 
-  ash_get_bits_code(&context, src, src_length, 32, ash_tree_literal);
-  ash_get_bits_code(&context, src, src_length, 32, ash_tree_back_ref);
+  if (ash_get_bits_code(&context, src, src_length, 32, ash_tree_literal) < 0 ||
+      ash_get_bits_code(&context, src, src_length, 32, ash_tree_back_ref) < 0) {
+    return false;
+  }
 
   int root9 = ash_read_tree_9(&context, src, src_length);
   if (root9 < 0) {
@@ -263,7 +321,11 @@ bool nsmbw_compress_ash_decode(const uint8_t *src, uint8_t *dst,
   while (dst_index < expand_size) {
     int node12, node9;
     for (node9 = root9; node9 >= ash_node_9_min;) {
-      if (ash_get_bit_1c(&context, src, src_length, ash_tree_literal) != 0) {
+      int bit = ash_get_bit_1c(&context, src, src_length, ash_tree_literal);
+      if (bit < 0) {
+        return false;
+      }
+      if (bit != 0) {
         node9 = context.right9[node9];
       } else {
         node9 = context.left9[node9];
@@ -276,7 +338,11 @@ bool nsmbw_compress_ash_decode(const uint8_t *src, uint8_t *dst,
     }
 
     for (node12 = root12; node12 >= ash_node_12_min;) {
-      if (ash_get_bit_1c(&context, src, src_length, ash_tree_back_ref) != 0) {
+      int bit = ash_get_bit_1c(&context, src, src_length, ash_tree_back_ref);
+      if (bit < 0) {
+        return false;
+      }
+      if (bit != 0) {
         node12 = context.right12[node12];
       } else {
         node12 = context.left12[node12];
@@ -531,7 +597,7 @@ nsmbw_compress_ash_encode(const uint8_t *src, uint8_t *dst, size_t src_length,
     }
   }
 
-  if (!ncutil_bit_writer_pad(&bit_writer, sizeof(uint32_t))) {
+  if (!ncutil_bit_writer_flush(&bit_writer)) {
     nsmbw_compress_print_error("Output file is too much larger than the "
                                "input file; aborting compression");
     free(work_buffer);
