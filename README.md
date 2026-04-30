@@ -1,8 +1,7 @@
 # nsmbw-compress
 
 Tool for encoding and decoding various different compression formats supported by
-New Super Mario Bros. Wii and other games using the same libraries, based on
-a [decompilation of the CX library](https://github.com/doldecomp/sdk_2009-12-11/tree/536dd80cde16989a4914305a1f1095122ab1c44f/source/cx).
+New Super Mario Bros. Wii and other games using the same libraries.
 
 Here's a list of the supported formats:
 | Format        | Extension | Description             | Encode | Decode | Known Uses                      |
